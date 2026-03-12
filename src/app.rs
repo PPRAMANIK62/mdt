@@ -1,12 +1,15 @@
 //! Application state and logic.
 
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::text::{Line, Span, Text};
+use tui_tree_widget::{TreeItem, TreeState};
 
-use crate::file_tree::FileTree;
+use crate::file_tree;
 
 /// Current input mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -36,34 +39,47 @@ pub enum Focus {
 
 /// Top-level application state.
 pub struct App {
-    pub file_tree: FileTree,
+    pub tree_state: TreeState<String>,
+    pub tree_items: Vec<TreeItem<'static, String>>,
+    pub path_map: HashMap<String, (PathBuf, bool)>,
     pub current_file: Option<PathBuf>,
     pub file_content: String,
     pub rendered_lines: Vec<Line<'static>>,
     pub scroll_offset: usize,
+    pub viewport_height: usize,
     pub mode: AppMode,
     pub focus: Focus,
     pub should_quit: bool,
     #[allow(dead_code)]  // Used by future tasks for external redraw triggers.
     pub needs_redraw: bool,
     pub status_message: String,
+    /// Pending key for composed commands like `gg`.
+    pub pending_key: Option<(char, Instant)>,
+    /// Buffer for command-mode input (e.g., `:q`).
+    pub command_buffer: String,
 }
 
 impl App {
     /// Create a new `App` rooted at `path`.
     pub fn new(path: PathBuf) -> anyhow::Result<Self> {
-        let file_tree = FileTree::scan(&path)?;
+        let (tree_items, path_map) = file_tree::build_tree_items(&path)?;
+        let tree_state = TreeState::default();
         Ok(Self {
-            file_tree,
+            tree_state,
+            tree_items,
+            path_map,
             current_file: None,
             file_content: String::new(),
             rendered_lines: Vec::new(),
             scroll_offset: 0,
+            viewport_height: 0,
             mode: AppMode::Normal,
             focus: Focus::FileList,
             should_quit: false,
             needs_redraw: true,
             status_message: String::new(),
+            pending_key: None,
+            command_buffer: String::new(),
         })
     }
 
@@ -83,38 +99,146 @@ impl App {
 
         match self.mode {
             AppMode::Normal => self.handle_normal_key(key),
-            AppMode::Insert | AppMode::Command => {
-                // Not implemented yet — fall back to normal handling.
-                self.handle_normal_key(key);
+            AppMode::Insert => {
+                // Esc returns to Normal mode (actual editing is Task 8).
+                if key.code == KeyCode::Esc {
+                    self.mode = AppMode::Normal;
+                }
             }
+            AppMode::Command => self.handle_command_key(key),
         }
     }
 
     /// Handle key events in Normal mode.
     fn handle_normal_key(&mut self, key: KeyEvent) {
+        // Check for composed commands (e.g., gg) — works in both FileList and Preview.
+        if let Some((pending_char, instant)) = self.pending_key.take() {
+            if instant.elapsed().as_millis() < 500
+                && pending_char == 'g'
+                && key.code == KeyCode::Char('g')
+            {
+                match self.focus {
+                    Focus::Preview => self.scroll_to_top(),
+                    Focus::FileList => { self.tree_state.select_first(); }
+                }
+                return;
+            }
+            // Pending key expired or didn't match — fall through to normal handling.
+        }
+
         match key.code {
-            KeyCode::Char('q') => self.should_quit = true,
+            // --- Navigation (focus-dependent) ---
             KeyCode::Char('j') | KeyCode::Down => match self.focus {
-                Focus::FileList => self.file_tree.navigate_down(),
+                Focus::FileList => { self.tree_state.key_down(); }
                 Focus::Preview => self.scroll_down(),
             },
             KeyCode::Char('k') | KeyCode::Up => match self.focus {
-                Focus::FileList => self.file_tree.navigate_up(),
+                Focus::FileList => { self.tree_state.key_up(); }
                 Focus::Preview => self.scroll_up(),
             },
             KeyCode::Enter => self.handle_enter(),
             KeyCode::Tab => self.toggle_focus(),
+
+            // --- FileList-only navigation ---
             KeyCode::Char('h') | KeyCode::Left | KeyCode::Backspace => {
                 if self.focus == Focus::FileList {
-                    self.file_tree.go_back();
+                    self.tree_state.key_left();
                 }
             }
             KeyCode::Char('l') | KeyCode::Right => {
                 if self.focus == Focus::FileList {
-                    self.handle_enter();
+                    self.tree_state.key_right();
                 }
             }
+
+            // --- G: last item (FileList) or scroll bottom (Preview) ---
+            KeyCode::Char('G') => match self.focus {
+                Focus::FileList => { self.tree_state.select_last(); }
+                Focus::Preview => self.scroll_to_bottom(),
+            },
+
+            // --- g: start pending key for gg (both focuses) ---
+            KeyCode::Char('g') => {
+                self.pending_key = Some(('g', Instant::now()));
+            }
+
+            // --- Preview-only scrolling ---
+            KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                if self.focus == Focus::Preview {
+                    self.scroll_half_page_down();
+                }
+            }
+            KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                if self.focus == Focus::Preview {
+                    self.scroll_half_page_up();
+                }
+            }
+
+            // --- Mode transitions ---
+            KeyCode::Char(':') => {
+                self.mode = AppMode::Command;
+                self.command_buffer.clear();
+            }
+            KeyCode::Char('/') => {
+                // Search placeholder — consume key, show hint.
+                self.status_message = "Search not yet implemented".to_string();
+            }
+            KeyCode::Char('i') | KeyCode::Char('e') => {
+                if self.focus == Focus::Preview {
+                    self.mode = AppMode::Insert;
+                    self.status_message = "-- INSERT -- (not yet implemented)".to_string();
+                }
+            }
+
+            // --- Quit ---
+            KeyCode::Char('q') => self.should_quit = true,
+
             _ => {}
+        }
+    }
+
+    /// Handle key events in Command mode (`:` prefix).
+    fn handle_command_key(&mut self, key: KeyEvent) {
+        match key.code {
+            KeyCode::Esc => {
+                self.mode = AppMode::Normal;
+                self.command_buffer.clear();
+                self.status_message.clear();
+            }
+            KeyCode::Enter => {
+                let cmd = self.command_buffer.trim().to_string();
+                self.mode = AppMode::Normal;
+                self.command_buffer.clear();
+                self.execute_command(&cmd);
+            }
+            KeyCode::Backspace => {
+                self.command_buffer.pop();
+                if self.command_buffer.is_empty() {
+                    // Empty buffer after backspace — return to Normal.
+                    self.mode = AppMode::Normal;
+                    self.status_message.clear();
+                }
+            }
+            KeyCode::Char(c) => {
+                self.command_buffer.push(c);
+            }
+            _ => {}
+        }
+    }
+
+    /// Execute a command-mode command.
+    fn execute_command(&mut self, cmd: &str) {
+        match cmd {
+            "q" | "quit" => self.should_quit = true,
+            "w" | "write" => {
+                self.status_message = "Not in editor".to_string();
+            }
+            "wq" | "x" => {
+                self.status_message = "Not in editor".to_string();
+            }
+            other => {
+                self.status_message = format!("Unknown command: :{other}");
+            }
         }
     }
 
@@ -123,8 +247,18 @@ impl App {
         if self.focus != Focus::FileList {
             return;
         }
-        if let Some(path) = self.file_tree.enter() {
-            self.open_file(&path);
+        let selected: Vec<String> = self.tree_state.selected().to_vec();
+        if selected.is_empty() {
+            return;
+        }
+        let id = selected.last().unwrap();
+        let info = self.path_map.get(id).cloned();
+        if let Some((path, is_dir)) = info {
+            if is_dir {
+                self.tree_state.toggle(selected);
+            } else {
+                self.open_file(&path);
+            }
         }
     }
 
@@ -158,12 +292,44 @@ impl App {
     fn scroll_down(&mut self) {
         if !self.rendered_lines.is_empty() {
             self.scroll_offset = self.scroll_offset.saturating_add(1);
+            self.clamp_scroll();
         }
     }
 
     fn scroll_up(&mut self) {
         self.scroll_offset = self.scroll_offset.saturating_sub(1);
     }
+
+    fn scroll_to_top(&mut self) {
+        self.scroll_offset = 0;
+    }
+
+    fn scroll_to_bottom(&mut self) {
+        self.scroll_offset = self.max_scroll();
+    }
+
+    fn scroll_half_page_down(&mut self) {
+        let half = self.viewport_height / 2;
+        self.scroll_offset = self.scroll_offset.saturating_add(half.max(1));
+        self.clamp_scroll();
+    }
+
+    fn scroll_half_page_up(&mut self) {
+        let half = self.viewport_height / 2;
+        self.scroll_offset = self.scroll_offset.saturating_sub(half.max(1));
+    }
+
+    fn max_scroll(&self) -> usize {
+        self.rendered_lines.len().saturating_sub(self.viewport_height)
+    }
+
+    fn clamp_scroll(&mut self) {
+        let max = self.max_scroll();
+        if self.scroll_offset > max {
+            self.scroll_offset = max;
+        }
+    }
+
 }
 
 /// Convert raw markdown into styled ratatui [`Text`] for rendering in a `Paragraph` widget.
