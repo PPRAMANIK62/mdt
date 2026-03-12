@@ -7,10 +7,11 @@
 use pulldown_cmark::{CodeBlockKind, CowStr, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
-use syntect::easy::HighlightLines;
-use syntect::highlighting::{FontStyle, ThemeSet};
+use syntect::easy::ScopeRegionIterator;
+use syntect::parsing::{ParseState, Scope, ScopeStack};
 use syntect::parsing::SyntaxSet;
 use syntect::util::LinesWithEndings;
+use std::sync::OnceLock;
 
 /// Render markdown input into styled ratatui [`Text`].
 ///
@@ -50,8 +51,145 @@ const LINK_STYLE: Style = Style::new()
     .fg(Color::Blue);
 const BLOCKQUOTE_STYLE: Style = Style::new().fg(Color::DarkGray);
 const CODE_BORDER_STYLE: Style = Style::new().fg(Color::DarkGray);
-const CODE_DEFAULT_STYLE: Style = Style::new().fg(Color::White);
+const CODE_DEFAULT_STYLE: Style = Style::new();
 const HR_STYLE: Style = Style::new().fg(Color::DarkGray);
+
+// ── Syntax highlighting ─────────────────────────────────────────────────────
+
+/// Semantic token categories for ANSI code highlighting.
+enum CodeToken {
+    Comment,
+    String,
+    Number,
+    Operator,
+    Keyword,
+    Function,
+    Type,
+    Tag,
+    Punctuation,
+    Variable,
+    Constant,
+    Normal,
+}
+
+impl CodeToken {
+    fn to_style(&self) -> Style {
+        match self {
+            CodeToken::Comment => Style::new().fg(Color::DarkGray).add_modifier(Modifier::ITALIC),
+            CodeToken::String => Style::new().fg(Color::Green),
+            CodeToken::Number => Style::new().fg(Color::Cyan),
+            CodeToken::Operator => Style::new().fg(Color::Cyan),
+            CodeToken::Keyword => Style::new().fg(Color::Magenta),
+            CodeToken::Function => Style::new().fg(Color::Blue),
+            CodeToken::Type => Style::new().fg(Color::Yellow),
+            CodeToken::Tag => Style::new().fg(Color::Red),
+            CodeToken::Punctuation => Style::default(),
+            CodeToken::Variable => Style::new().fg(Color::Red),
+            CodeToken::Constant => Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+            CodeToken::Normal => Style::default(),
+        }
+    }
+}
+
+/// Pre-built `Scope` objects for prefix matching.
+struct ScopeMatchers {
+    comment: Scope,
+    string: Scope,
+    constant_character: Scope,
+    constant_numeric: Scope,
+    keyword_operator: Scope,
+    keyword: Scope,
+    storage: Scope,
+    entity_name_function: Scope,
+    support_function: Scope,
+    entity_name_type: Scope,
+    support_type: Scope,
+    entity_name_tag: Scope,
+    punctuation: Scope,
+    variable: Scope,
+    entity_name: Scope,
+    constant: Scope,
+}
+
+impl ScopeMatchers {
+    fn new() -> Self {
+        Self {
+            comment: Scope::new("comment").unwrap(),
+            string: Scope::new("string").unwrap(),
+            constant_character: Scope::new("constant.character").unwrap(),
+            constant_numeric: Scope::new("constant.numeric").unwrap(),
+            keyword_operator: Scope::new("keyword.operator").unwrap(),
+            keyword: Scope::new("keyword").unwrap(),
+            storage: Scope::new("storage").unwrap(),
+            entity_name_function: Scope::new("entity.name.function").unwrap(),
+            support_function: Scope::new("support.function").unwrap(),
+            entity_name_type: Scope::new("entity.name.type").unwrap(),
+            support_type: Scope::new("support.type").unwrap(),
+            entity_name_tag: Scope::new("entity.name.tag").unwrap(),
+            punctuation: Scope::new("punctuation").unwrap(),
+            variable: Scope::new("variable").unwrap(),
+            entity_name: Scope::new("entity.name").unwrap(),
+            constant: Scope::new("constant").unwrap(),
+        }
+    }
+}
+
+fn syntax_set() -> &'static SyntaxSet {
+    static SS: OnceLock<SyntaxSet> = OnceLock::new();
+    SS.get_or_init(SyntaxSet::load_defaults_newlines)
+}
+
+fn scope_matchers() -> &'static ScopeMatchers {
+    static MATCHERS: OnceLock<ScopeMatchers> = OnceLock::new();
+    MATCHERS.get_or_init(ScopeMatchers::new)
+}
+
+/// Map the most-specific scope in the stack to an ANSI style.
+/// Priority order: most-specific prefixes checked first.
+fn scope_to_style(stack: &ScopeStack, m: &ScopeMatchers) -> Style {
+    let Some(&scope) = stack.as_slice().last() else {
+        return CodeToken::Normal.to_style();
+    };
+
+    // Priority order: most-specific first
+    if m.comment.is_prefix_of(scope) {
+        return CodeToken::Comment.to_style();
+    }
+    if m.string.is_prefix_of(scope) || m.constant_character.is_prefix_of(scope) {
+        return CodeToken::String.to_style();
+    }
+    if m.constant_numeric.is_prefix_of(scope) {
+        return CodeToken::Number.to_style();
+    }
+    // keyword.operator MUST be before keyword
+    if m.keyword_operator.is_prefix_of(scope) {
+        return CodeToken::Operator.to_style();
+    }
+    if m.keyword.is_prefix_of(scope) || m.storage.is_prefix_of(scope) {
+        return CodeToken::Keyword.to_style();
+    }
+    if m.entity_name_function.is_prefix_of(scope) || m.support_function.is_prefix_of(scope) {
+        return CodeToken::Function.to_style();
+    }
+    if m.entity_name_type.is_prefix_of(scope) || m.support_type.is_prefix_of(scope) {
+        return CodeToken::Type.to_style();
+    }
+    if m.entity_name_tag.is_prefix_of(scope) {
+        return CodeToken::Tag.to_style();
+    }
+    if m.punctuation.is_prefix_of(scope) {
+        return CodeToken::Punctuation.to_style();
+    }
+    if m.variable.is_prefix_of(scope) || m.entity_name.is_prefix_of(scope) {
+        return CodeToken::Variable.to_style();
+    }
+    // constant MUST be after specific constant prefixes
+    if m.constant.is_prefix_of(scope) {
+        return CodeToken::Constant.to_style();
+    }
+
+    CodeToken::Normal.to_style()
+}
 
 // ── Renderer ────────────────────────────────────────────────────────────────
 
@@ -420,8 +558,7 @@ impl Renderer {
     }
 
     fn highlight_code(&self, code: &str, lang: &str) -> Vec<Vec<Span<'static>>> {
-        let ss = SyntaxSet::load_defaults_newlines();
-        let ts = ThemeSet::load_defaults();
+        let ss = syntax_set();
 
         // Try to find syntax for the language.
         let syntax = if lang.is_empty() {
@@ -432,30 +569,27 @@ impl Renderer {
 
         match syntax {
             Some(syntax) => {
-                let theme = &ts.themes["base16-ocean.dark"];
-                let mut h = HighlightLines::new(syntax, theme);
+                let mut state = ParseState::new(syntax);
+                let mut stack = ScopeStack::new();
+                let matchers = scope_matchers();
                 let mut result = Vec::new();
 
                 for line in LinesWithEndings::from(code) {
-                    let ranges = h.highlight_line(line, &ss).unwrap_or_default();
-                    let spans: Vec<Span<'static>> = ranges
-                        .into_iter()
-                        .map(|(hl_style, text)| {
-                            let fg = Color::Rgb(
-                                hl_style.foreground.r,
-                                hl_style.foreground.g,
-                                hl_style.foreground.b,
-                            );
-                            let mut style = Style::new().fg(fg);
-                            if hl_style.font_style.contains(FontStyle::BOLD) {
-                                style = style.add_modifier(Modifier::BOLD);
-                            }
-                            if hl_style.font_style.contains(FontStyle::ITALIC) {
-                                style = style.add_modifier(Modifier::ITALIC);
-                            }
-                            Span::styled(text.trim_end_matches('\n').to_string(), style)
-                        })
-                        .collect();
+                    let ops = state.parse_line(line, ss).unwrap_or_default();
+                    let mut spans = Vec::new();
+
+                    for (s, op) in ScopeRegionIterator::new(&ops, line) {
+                        let _ = stack.apply(op);
+                        if s.is_empty() {
+                            continue;
+                        }
+                        let style = scope_to_style(&stack, matchers);
+                        spans.push(Span::styled(
+                            s.trim_end_matches('\n').to_string(),
+                            style,
+                        ));
+                    }
+
                     result.push(spans);
                 }
                 result
@@ -752,4 +886,97 @@ mod tests {
         let deep_line = content.iter().find(|l| l.contains("deep"));
         assert!(deep_line.is_some(), "Deep item missing");
     }
+
+    // ── Scope-to-style mapping tests ──────────────────────────────────────────
+
+    #[test]
+    fn scope_keyword_operator_gets_operator_not_keyword() {
+        let mut stack = ScopeStack::new();
+        stack.push(Scope::new("keyword.operator").unwrap());
+        let style = scope_to_style(&stack, scope_matchers());
+        // keyword.operator → Operator (Cyan), NOT Keyword (Magenta)
+        assert_eq!(style.fg, Some(Color::Cyan));
+        assert_ne!(style.fg, Some(Color::Magenta));
+    }
+
+    #[test]
+    fn scope_comment_gets_darkgray_italic() {
+        let mut stack = ScopeStack::new();
+        stack.push(Scope::new("comment.line.double-slash").unwrap());
+        let style = scope_to_style(&stack, scope_matchers());
+        assert_eq!(style.fg, Some(Color::DarkGray));
+        assert!(style.add_modifier.contains(Modifier::ITALIC));
+    }
+
+    #[test]
+    fn scope_string_gets_green() {
+        let mut stack = ScopeStack::new();
+        stack.push(Scope::new("string.quoted.double").unwrap());
+        let style = scope_to_style(&stack, scope_matchers());
+        assert_eq!(style.fg, Some(Color::Green));
+    }
+
+    #[test]
+    fn scope_function_gets_blue() {
+        let mut stack = ScopeStack::new();
+        stack.push(Scope::new("entity.name.function").unwrap());
+        let style = scope_to_style(&stack, scope_matchers());
+        assert_eq!(style.fg, Some(Color::Blue));
+    }
+
+    #[test]
+    fn scope_type_gets_yellow() {
+        let mut stack = ScopeStack::new();
+        stack.push(Scope::new("entity.name.type").unwrap());
+        let style = scope_to_style(&stack, scope_matchers());
+        assert_eq!(style.fg, Some(Color::Yellow));
+    }
+
+    #[test]
+    fn scope_unknown_gets_default() {
+        let mut stack = ScopeStack::new();
+        stack.push(Scope::new("unknown.scope.xyz").unwrap());
+        let style = scope_to_style(&stack, scope_matchers());
+        assert_eq!(style, Style::default());
+    }
+
+    #[test]
+    fn scope_entity_name_function_before_entity_name() {
+        // entity.name.function should match Function (Blue),
+        // NOT fall through to Variable (Red) via entity.name
+        let mut stack = ScopeStack::new();
+        stack.push(Scope::new("entity.name.function").unwrap());
+        let style = scope_to_style(&stack, scope_matchers());
+        assert_eq!(style.fg, Some(Color::Blue));
+        assert_ne!(style.fg, Some(Color::Red));
+    }
+
+    #[test]
+    fn scope_constant_numeric_before_constant() {
+        // constant.numeric → Number (Cyan, no Bold),
+        // NOT Constant (Cyan + Bold)
+        let mut stack = ScopeStack::new();
+        stack.push(Scope::new("constant.numeric").unwrap());
+        let style = scope_to_style(&stack, scope_matchers());
+        assert_eq!(style.fg, Some(Color::Cyan));
+        assert!(!style.add_modifier.contains(Modifier::BOLD));
+    }
+
+    #[test]
+    fn scope_render_markdown_code_block_uses_ansi_colors() {
+        let text = render_markdown("```rust\nfn main() { let x = 42; }\n```\n");
+        for line in &text.lines {
+            for span in &line.spans {
+                if let Some(fg) = span.style.fg {
+                    assert!(
+                        !matches!(fg, Color::Rgb(_, _, _)),
+                        "Found Color::Rgb in code block span: {:?} with content {:?}",
+                        fg,
+                        span.content,
+                    );
+                }
+            }
+        }
+    }
+
 }
