@@ -101,15 +101,16 @@ impl FileTree {
 }
 
 /// Return type for [`build_tree_items`]: tree items + ID-to-path lookup map.
-pub type TreeBuildResult = (Vec<TreeItem<'static, String>>, HashMap<String, (PathBuf, bool)>);
+pub type TreeBuildResult = (
+    Vec<TreeItem<'static, String>>,
+    HashMap<String, (PathBuf, bool)>,
+);
 
 /// Build a recursive tree of [`TreeItem`]s from a root directory.
 ///
 /// Returns the tree items and a map from tree ID (relative path from root)
 /// to `(absolute_path, is_directory)`.
-pub fn build_tree_items(
-    root: &Path,
-) -> Result<TreeBuildResult> {
+pub fn build_tree_items(root: &Path) -> Result<TreeBuildResult> {
     let canonical = fs::canonicalize(root)?;
     let mut path_map = HashMap::new();
     let items = build_items_recursive(&canonical, &canonical, &mut path_map)?;

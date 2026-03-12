@@ -1,6 +1,7 @@
 mod app;
-#[allow(dead_code)]  // Some fields/methods used by future tasks.
+#[allow(dead_code)] // Some fields/methods used by future tasks.
 mod file_tree;
+mod markdown;
 mod ui;
 
 use std::io;
@@ -59,13 +60,16 @@ fn run_loop(
 
         if event::poll(Duration::from_millis(250))? {
             let event = event::read()?;
-            if let Event::Key(key) = &event {
-                if key.kind != crossterm::event::KeyEventKind::Press {
-                    continue;
+            match &event {
+                Event::Key(key) if key.kind == crossterm::event::KeyEventKind::Press => {
+                    app.handle_event(event);
+                    needs_redraw = true;
                 }
+                Event::Resize(_, _) => {
+                    needs_redraw = true;
+                }
+                _ => {}
             }
-            app.handle_event(event);
-            needs_redraw = true;
         }
 
         if app.should_quit {

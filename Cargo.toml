@@ -6,7 +6,8 @@ edition = "2021"
 [dependencies]
 ratatui = "0.30"
 crossterm = "0.29"
-tui-markdown = { version = "0.3", features = ["highlight-code"] }
+pulldown-cmark = { version = "0.13", default-features = false, features = ["simd"] }
+syntect = { version = "5", default-features = false, features = ["default-fancy"] }
 tui-tree-widget = "0.24"
 ratatui-textarea = "0.8"
 unicode-width = "0.2"

@@ -7,12 +7,13 @@ use std::time::Instant;
 
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::style::Style;
-use ratatui::text::{Line, Span, Text};
+use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders};
 use ratatui_textarea::TextArea;
 use tui_tree_widget::{TreeItem, TreeState};
 
 use crate::file_tree;
+use crate::markdown::render_markdown;
 
 /// Current input mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -21,6 +22,7 @@ pub enum AppMode {
     Normal,
     Insert,
     Command,
+    Search,
 }
 
 impl std::fmt::Display for AppMode {
@@ -29,6 +31,7 @@ impl std::fmt::Display for AppMode {
             Self::Normal => write!(f, "NORMAL"),
             Self::Insert => write!(f, "INSERT"),
             Self::Command => write!(f, "COMMAND"),
+            Self::Search => write!(f, "SEARCH"),
         }
     }
 }
@@ -64,6 +67,20 @@ pub struct App {
     pub textarea: Option<TextArea<'static>>,
     /// Whether the editor has unsaved changes.
     pub is_dirty: bool,
+    /// Whether search input is active.
+    pub search_active: bool,
+    /// Current search query string.
+    pub search_query: String,
+    /// Line numbers containing matches (for in-document search).
+    pub search_matches: Vec<usize>,
+    /// Current match index (into search_matches).
+    pub search_current: usize,
+    /// Filtered tree items for file search (None = show all).
+    pub filtered_tree_items: Option<Vec<TreeItem<'static, String>>>,
+    /// Filtered path map for file search.
+    pub filtered_path_map: Option<HashMap<String, (PathBuf, bool)>>,
+    /// Whether the help overlay is shown.
+    pub show_help: bool,
 }
 
 impl App {
@@ -89,6 +106,13 @@ impl App {
             command_buffer: String::new(),
             textarea: None,
             is_dirty: false,
+            search_active: false,
+            search_query: String::new(),
+            search_matches: Vec::new(),
+            search_current: 0,
+            filtered_tree_items: None,
+            filtered_path_map: None,
+            show_help: false,
         })
     }
 
@@ -107,9 +131,21 @@ impl App {
         }
 
         match self.mode {
-            AppMode::Normal => self.handle_normal_key(key),
+            AppMode::Normal => {
+                // If help overlay is showing, Esc or ? dismisses it.
+                if self.show_help {
+                    if key.code == KeyCode::Esc || key.code == KeyCode::Char('?') {
+                        self.show_help = false;
+                        return;
+                    }
+                    // Ignore other keys while help is showing.
+                    return;
+                }
+                self.handle_normal_key(key);
+            }
             AppMode::Insert => self.handle_insert_key(key),
             AppMode::Command => self.handle_command_key(key),
+            AppMode::Search => self.handle_search_key(key),
         }
     }
 
@@ -216,8 +252,17 @@ impl App {
                 self.command_buffer.clear();
             }
             KeyCode::Char('/') => {
-                // Search placeholder — consume key, show hint.
-                self.status_message = "Search not yet implemented".to_string();
+                self.search_active = true;
+                self.search_query.clear();
+                self.search_matches.clear();
+                self.search_current = 0;
+                self.mode = AppMode::Search;
+            }
+            KeyCode::Char('n') => self.next_search_match(),
+            KeyCode::Char('N') => self.prev_search_match(),
+            KeyCode::Esc => {
+                // Clear active search results
+                self.clear_search();
             }
             KeyCode::Char('i') | KeyCode::Char('e') => {
                 if self.focus == Focus::Preview {
@@ -226,6 +271,13 @@ impl App {
             }
 
             // --- Quit ---
+            // --- Help ---
+            KeyCode::Char('?') => {
+                if self.textarea.is_none() {
+                    self.show_help = !self.show_help;
+                }
+            }
+
             KeyCode::Char('q') => self.should_quit = true,
 
             _ => {}
@@ -486,49 +538,281 @@ impl App {
             self.scroll_offset = max;
         }
     }
-}
 
-/// Convert raw markdown into styled ratatui [`Text`] for rendering in a `Paragraph` widget.
-///
-/// - Pre-expands tabs to 4 spaces (ratatui `Paragraph` silently drops tab characters).
-/// - Respects the `NO_COLOR` environment variable: when set, returns plain unstyled text.
-/// - Delegates all markdown parsing and styling to [`tui_markdown::from_str`], which handles
-///   headings, bold/italic, strikethrough, inline code, fenced code blocks (syntax-highlighted),
-///   blockquotes, lists, task lists, links, YAML front matter, and horizontal rules.
-pub fn render_markdown(input: &str) -> Text<'static> {
-    // Pre-expand tabs (ratatui Paragraph silently drops tab characters)
-    let cleaned = input.replace('\t', "    ");
-
-    // Respect NO_COLOR env var — return plain text when set
-    if std::env::var("NO_COLOR").is_ok() {
-        return Text::raw(cleaned);
+    /// Handle key events in Search mode (`/` prefix).
+    fn handle_search_key(&mut self, key: KeyEvent) {
+        match key.code {
+            KeyCode::Esc => {
+                // Cancel search, restore full list.
+                self.search_active = false;
+                self.search_query.clear();
+                self.search_matches.clear();
+                self.search_current = 0;
+                self.filtered_tree_items = None;
+                self.filtered_path_map = None;
+                self.mode = AppMode::Normal;
+                self.status_message.clear();
+            }
+            KeyCode::Enter => {
+                // Confirm search.
+                self.search_active = false;
+                if self.focus == Focus::Preview {
+                    self.perform_document_search();
+                }
+                self.mode = AppMode::Normal;
+            }
+            KeyCode::Backspace => {
+                self.search_query.pop();
+                if self.focus == Focus::FileList {
+                    self.update_file_search_filter();
+                }
+            }
+            KeyCode::Char(c) => {
+                self.search_query.push(c);
+                if self.focus == Focus::FileList {
+                    self.update_file_search_filter();
+                }
+            }
+            _ => {}
+        }
     }
 
-    let text = tui_markdown::from_str(&cleaned);
-    text_to_owned(text)
+    /// Rebuild filtered tree items based on current search query (file search).
+    fn update_file_search_filter(&mut self) {
+        if self.search_query.is_empty() {
+            self.filtered_tree_items = None;
+            self.filtered_path_map = None;
+            return;
+        }
+
+        let query_lower = self.search_query.to_lowercase();
+        let mut filtered_items = Vec::new();
+        let mut filtered_map = HashMap::new();
+
+        for (id, (path, is_dir)) in &self.path_map {
+            if *is_dir {
+                continue;
+            }
+            let name = path
+                .file_name()
+                .map(|n| n.to_string_lossy().to_lowercase())
+                .unwrap_or_default();
+            if name.contains(&query_lower) {
+                let display_name = path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                let item = TreeItem::new_leaf(id.clone(), display_name);
+                filtered_items.push(item);
+                filtered_map.insert(id.clone(), (path.clone(), *is_dir));
+            }
+        }
+
+        // Sort filtered items alphabetically by their identifier.
+        filtered_items.sort_by(|a, b| a.identifier().cmp(b.identifier()));
+
+        self.filtered_tree_items = Some(filtered_items);
+        self.filtered_path_map = Some(filtered_map);
+    }
+
+    /// Perform in-document search: find all lines containing the query.
+    fn perform_document_search(&mut self) {
+        self.search_matches.clear();
+        self.search_current = 0;
+
+        if self.search_query.is_empty() || self.file_content.is_empty() {
+            return;
+        }
+
+        let query_lower = self.search_query.to_lowercase();
+        for (i, line) in self.file_content.lines().enumerate() {
+            if line.to_lowercase().contains(&query_lower) {
+                self.search_matches.push(i);
+            }
+        }
+
+        // Scroll to first match.
+        if let Some(&line_num) = self.search_matches.first() {
+            self.scroll_offset = line_num.saturating_sub(2);
+            self.clamp_scroll();
+            self.status_message = format!(
+                "/{} [{}/{}]",
+                self.search_query,
+                1,
+                self.search_matches.len()
+            );
+        } else {
+            self.status_message = format!("Pattern not found: {}", self.search_query);
+        }
+    }
+
+    /// Navigate to the next search match.
+    fn next_search_match(&mut self) {
+        if self.search_matches.is_empty() {
+            // For file search, just keep filter active.
+            return;
+        }
+        if self.search_current + 1 < self.search_matches.len() {
+            self.search_current += 1;
+        } else {
+            self.search_current = 0; // Wrap around.
+        }
+        if let Some(&line_num) = self.search_matches.get(self.search_current) {
+            self.scroll_offset = line_num.saturating_sub(2);
+            self.clamp_scroll();
+            self.status_message = format!(
+                "/{} [{}/{}]",
+                self.search_query,
+                self.search_current + 1,
+                self.search_matches.len()
+            );
+        }
+    }
+
+    /// Navigate to the previous search match.
+    fn prev_search_match(&mut self) {
+        if self.search_matches.is_empty() {
+            return;
+        }
+        if self.search_current > 0 {
+            self.search_current -= 1;
+        } else {
+            self.search_current = self.search_matches.len().saturating_sub(1); // Wrap.
+        }
+        if let Some(&line_num) = self.search_matches.get(self.search_current) {
+            self.scroll_offset = line_num.saturating_sub(2);
+            self.clamp_scroll();
+            self.status_message = format!(
+                "/{} [{}/{}]",
+                self.search_query,
+                self.search_current + 1,
+                self.search_matches.len()
+            );
+        }
+    }
+
+    /// Clear all search state.
+    fn clear_search(&mut self) {
+        self.search_active = false;
+        self.search_query.clear();
+        self.search_matches.clear();
+        self.search_current = 0;
+        self.filtered_tree_items = None;
+        self.filtered_path_map = None;
+        self.status_message.clear();
+    }
 }
 
-/// Convert a borrowed [`Text`] into an owned `Text<'static>` by cloning all string data.
-fn text_to_owned(text: Text<'_>) -> Text<'static> {
-    let lines: Vec<Line<'static>> = text
-        .lines
-        .into_iter()
-        .map(|line| {
-            let spans: Vec<Span<'static>> = line
-                .spans
-                .into_iter()
-                .map(|span| Span::styled(span.content.into_owned(), span.style))
-                .collect();
-            Line {
-                spans,
-                style: line.style,
-                alignment: line.alignment,
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── render_markdown ──────────────────────────────────────────────
+
+    #[test]
+    fn render_markdown_basic() {
+        let text = render_markdown("# Hello\n\nSome **bold** text\n");
+        assert!(!text.lines.is_empty(), "rendered text should have lines");
+        assert!(text.lines.len() >= 2);
+    }
+
+    #[test]
+    fn render_markdown_code_block() {
+        let input = "```rust\nfn main() {}\n```\n";
+        let text = render_markdown(input);
+        assert!(!text.lines.is_empty());
+    }
+
+    #[test]
+    fn render_markdown_empty_input() {
+        let text = render_markdown("");
+        // Must not panic; result may be empty or a single blank line.
+        let _ = text;
+    }
+
+    #[test]
+    fn render_markdown_tabs_expanded() {
+        let text = render_markdown("\tindented");
+        for line in &text.lines {
+            for span in &line.spans {
+                assert!(!span.content.contains('\t'), "tabs should be expanded");
             }
-        })
-        .collect();
-    Text {
-        lines,
-        style: text.style,
-        alignment: text.alignment,
+        }
+    }
+
+    #[test]
+    fn render_markdown_whitespace_only() {
+        let text = render_markdown("   \n\n   \n");
+        // Must not panic.
+        let _ = text;
+    }
+
+    #[test]
+    fn render_markdown_lists_and_links() {
+        let input = "- item 1\n- item 2\n\n[link](https://example.com)\n";
+        let text = render_markdown(input);
+        assert!(!text.lines.is_empty());
+    }
+
+    // ── App::new ─────────────────────────────────────────────────────
+
+    #[test]
+    fn app_new_with_temp_dir() {
+        let dir = std::env::temp_dir().join("mdt-test-app-new");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("test.md"), "# Test").unwrap();
+
+        let app = App::new(dir.clone()).unwrap();
+        assert!(!app.tree_items.is_empty());
+        assert!(!app.path_map.is_empty());
+        assert_eq!(app.mode, AppMode::Normal);
+        assert_eq!(app.focus, Focus::FileList);
+        assert!(!app.should_quit);
+        assert!(!app.show_help);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn app_new_empty_dir() {
+        let dir = std::env::temp_dir().join("mdt-test-empty-dir");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let app = App::new(dir.clone()).unwrap();
+        assert!(app.tree_items.is_empty());
+        assert!(app.path_map.is_empty());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ── Search state ─────────────────────────────────────────────────
+
+    #[test]
+    fn clear_search_resets_all_fields() {
+        let dir = std::env::temp_dir().join("mdt-test-clear-search");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let mut app = App::new(dir.clone()).unwrap();
+        app.search_active = true;
+        app.search_query = "test".to_string();
+        app.search_matches = vec![1, 5, 10];
+        app.search_current = 2;
+        app.status_message = "something".to_string();
+
+        app.clear_search();
+
+        assert!(!app.search_active);
+        assert!(app.search_query.is_empty());
+        assert!(app.search_matches.is_empty());
+        assert_eq!(app.search_current, 0);
+        assert!(app.filtered_tree_items.is_none());
+        assert!(app.filtered_path_map.is_none());
+        assert!(app.status_message.is_empty());
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
