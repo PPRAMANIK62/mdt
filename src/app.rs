@@ -6,7 +6,10 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span, Text};
+use ratatui::widgets::{Block, Borders};
+use ratatui_textarea::TextArea;
 use tui_tree_widget::{TreeItem, TreeState};
 
 use crate::file_tree;
@@ -50,13 +53,17 @@ pub struct App {
     pub mode: AppMode,
     pub focus: Focus,
     pub should_quit: bool,
-    #[allow(dead_code)]  // Used by future tasks for external redraw triggers.
+    #[allow(dead_code)] // Used by future tasks for external redraw triggers.
     pub needs_redraw: bool,
     pub status_message: String,
     /// Pending key for composed commands like `gg`.
     pub pending_key: Option<(char, Instant)>,
     /// Buffer for command-mode input (e.g., `:q`).
     pub command_buffer: String,
+    /// Active text editor (Some when in editor mode).
+    pub textarea: Option<TextArea<'static>>,
+    /// Whether the editor has unsaved changes.
+    pub is_dirty: bool,
 }
 
 impl App {
@@ -80,6 +87,8 @@ impl App {
             status_message: String::new(),
             pending_key: None,
             command_buffer: String::new(),
+            textarea: None,
+            is_dirty: false,
         })
     }
 
@@ -99,18 +108,37 @@ impl App {
 
         match self.mode {
             AppMode::Normal => self.handle_normal_key(key),
-            AppMode::Insert => {
-                // Esc returns to Normal mode (actual editing is Task 8).
-                if key.code == KeyCode::Esc {
-                    self.mode = AppMode::Normal;
-                }
-            }
+            AppMode::Insert => self.handle_insert_key(key),
             AppMode::Command => self.handle_command_key(key),
+        }
+    }
+
+    /// Handle key events in Insert mode — forward to TextArea.
+    fn handle_insert_key(&mut self, key: KeyEvent) {
+        if key.code == KeyCode::Esc {
+            // Esc returns to Normal mode (stay in editor view).
+            self.mode = AppMode::Normal;
+            self.status_message.clear();
+            return;
+        }
+
+        // Forward all other keys to the TextArea.
+        if let Some(ref mut textarea) = self.textarea {
+            let modified = textarea.input(key);
+            if modified {
+                self.is_dirty = true;
+            }
         }
     }
 
     /// Handle key events in Normal mode.
     fn handle_normal_key(&mut self, key: KeyEvent) {
+        // If we're in editor view (textarea is Some), handle editor normal-mode keys.
+        if self.textarea.is_some() {
+            self.handle_editor_normal_key(key);
+            return;
+        }
+
         // Check for composed commands (e.g., gg) — works in both FileList and Preview.
         if let Some((pending_char, instant)) = self.pending_key.take() {
             if instant.elapsed().as_millis() < 500
@@ -119,7 +147,9 @@ impl App {
             {
                 match self.focus {
                     Focus::Preview => self.scroll_to_top(),
-                    Focus::FileList => { self.tree_state.select_first(); }
+                    Focus::FileList => {
+                        self.tree_state.select_first();
+                    }
                 }
                 return;
             }
@@ -129,11 +159,15 @@ impl App {
         match key.code {
             // --- Navigation (focus-dependent) ---
             KeyCode::Char('j') | KeyCode::Down => match self.focus {
-                Focus::FileList => { self.tree_state.key_down(); }
+                Focus::FileList => {
+                    self.tree_state.key_down();
+                }
                 Focus::Preview => self.scroll_down(),
             },
             KeyCode::Char('k') | KeyCode::Up => match self.focus {
-                Focus::FileList => { self.tree_state.key_up(); }
+                Focus::FileList => {
+                    self.tree_state.key_up();
+                }
                 Focus::Preview => self.scroll_up(),
             },
             KeyCode::Enter => self.handle_enter(),
@@ -153,7 +187,9 @@ impl App {
 
             // --- G: last item (FileList) or scroll bottom (Preview) ---
             KeyCode::Char('G') => match self.focus {
-                Focus::FileList => { self.tree_state.select_last(); }
+                Focus::FileList => {
+                    self.tree_state.select_last();
+                }
                 Focus::Preview => self.scroll_to_bottom(),
             },
 
@@ -185,8 +221,7 @@ impl App {
             }
             KeyCode::Char('i') | KeyCode::Char('e') => {
                 if self.focus == Focus::Preview {
-                    self.mode = AppMode::Insert;
-                    self.status_message = "-- INSERT -- (not yet implemented)".to_string();
+                    self.enter_editor();
                 }
             }
 
@@ -194,6 +229,97 @@ impl App {
             KeyCode::Char('q') => self.should_quit = true,
 
             _ => {}
+        }
+    }
+
+    /// Handle Normal-mode keys while in editor view (textarea is Some).
+    fn handle_editor_normal_key(&mut self, key: KeyEvent) {
+        match key.code {
+            // Enter Insert mode in editor.
+            KeyCode::Char('i') => {
+                self.mode = AppMode::Insert;
+                self.status_message = "-- INSERT --".to_string();
+            }
+            // Enter Command mode.
+            KeyCode::Char(':') => {
+                self.mode = AppMode::Command;
+                self.command_buffer.clear();
+            }
+            // Forward navigation keys to TextArea (h/j/k/l, arrows, etc.).
+            _ => {
+                if let Some(ref mut textarea) = self.textarea {
+                    textarea.input(key);
+                }
+            }
+        }
+    }
+
+    /// Enter the editor: create TextArea from current file content.
+    fn enter_editor(&mut self) {
+        if self.current_file.is_none() {
+            self.status_message = "No file open".to_string();
+            return;
+        }
+
+        let mut textarea = TextArea::from(self.file_content.lines());
+
+        let title = self
+            .current_file
+            .as_ref()
+            .and_then(|p| p.file_name())
+            .map(|n| format!(" Editor: {} ", n.to_string_lossy()))
+            .unwrap_or_else(|| " Editor ".to_string());
+
+        textarea.set_block(Block::default().title(title).borders(Borders::ALL));
+        textarea.set_line_number_style(Style::default());
+
+        self.textarea = Some(textarea);
+        self.is_dirty = false;
+        self.mode = AppMode::Insert;
+        self.status_message = "-- INSERT --".to_string();
+    }
+
+    /// Exit the editor, returning to preview mode.
+    fn exit_editor(&mut self) {
+        self.textarea = None;
+        self.is_dirty = false;
+        self.mode = AppMode::Normal;
+        self.scroll_offset = 0;
+    }
+
+    /// Save the editor content to disk, re-render markdown.
+    fn save_editor(&mut self) -> bool {
+        let Some(ref path) = self.current_file else {
+            self.status_message = "No file path".to_string();
+            return false;
+        };
+        let Some(ref textarea) = self.textarea else {
+            self.status_message = "Not in editor".to_string();
+            return false;
+        };
+
+        let content = textarea.lines().join("\n");
+        let path = path.clone();
+
+        match fs::write(&path, &content) {
+            Ok(()) => {
+                // Update stored content and re-render markdown preview.
+                self.file_content = content;
+                let rendered = render_markdown(&self.file_content);
+                self.rendered_lines = rendered.lines;
+                self.is_dirty = false;
+
+                let name = path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                self.status_message = format!("\"{}\" written", name);
+                true
+            }
+            Err(e) => {
+                self.status_message = format!("Error saving: {e}");
+                false
+            }
         }
     }
 
@@ -228,13 +354,42 @@ impl App {
 
     /// Execute a command-mode command.
     fn execute_command(&mut self, cmd: &str) {
+        let in_editor = self.textarea.is_some();
+
         match cmd {
-            "q" | "quit" => self.should_quit = true,
+            "q" | "quit" => {
+                if in_editor {
+                    if self.is_dirty {
+                        self.status_message = "Unsaved changes! :q! to force quit".to_string();
+                    } else {
+                        self.exit_editor();
+                    }
+                } else {
+                    self.should_quit = true;
+                }
+            }
+            "q!" => {
+                if in_editor {
+                    self.exit_editor();
+                } else {
+                    self.should_quit = true;
+                }
+            }
             "w" | "write" => {
-                self.status_message = "Not in editor".to_string();
+                if in_editor {
+                    self.save_editor();
+                } else {
+                    self.status_message = "Not in editor".to_string();
+                }
             }
             "wq" | "x" => {
-                self.status_message = "Not in editor".to_string();
+                if in_editor {
+                    if self.save_editor() {
+                        self.exit_editor();
+                    }
+                } else {
+                    self.status_message = "Not in editor".to_string();
+                }
             }
             other => {
                 self.status_message = format!("Unknown command: :{other}");
@@ -320,7 +475,9 @@ impl App {
     }
 
     fn max_scroll(&self) -> usize {
-        self.rendered_lines.len().saturating_sub(self.viewport_height)
+        self.rendered_lines
+            .len()
+            .saturating_sub(self.viewport_height)
     }
 
     fn clamp_scroll(&mut self) {
@@ -329,7 +486,6 @@ impl App {
             self.scroll_offset = max;
         }
     }
-
 }
 
 /// Convert raw markdown into styled ratatui [`Text`] for rendering in a `Paragraph` widget.

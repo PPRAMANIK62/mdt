@@ -24,8 +24,12 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     // --- File list ---
     draw_file_list(frame, app, main_chunks[0]);
 
-    // --- Preview ---
-    preview::draw_preview(frame, app, main_chunks[1]);
+    // --- Preview or Editor ---
+    if let Some(ref textarea) = app.textarea {
+        editor::draw_editor(frame, textarea, main_chunks[1]);
+    } else {
+        preview::draw_preview(frame, app, main_chunks[1]);
+    }
 
     // --- Status bar ---
     draw_status_bar(frame, app, status_area);
