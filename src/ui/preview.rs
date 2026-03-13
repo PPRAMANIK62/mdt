@@ -14,7 +14,12 @@ use crate::markdown::render_markdown;
 
 /// Draw the preview pane with virtual scrolling.
 ///
-/// Sets `app.document.viewport_height` as a side effect so scroll clamping works.
+/// # Side Effects (Intentional)
+/// This function updates `app.document.viewport_height` and `app.document.viewport_width`
+/// on every frame. This follows Ratatui's `StatefulWidget` pattern where layout-dependent
+/// state is updated during render, since the actual viewport dimensions are only known at
+/// render time (they depend on terminal size, file tree visibility, and padding).
+/// Input handlers (scroll, search) depend on these values being current.
 pub fn draw_preview(frame: &mut Frame, app: &mut App, area: Rect) {
     let block = Block::default().padding(Padding::new(2, 2, 1, 0));
 
