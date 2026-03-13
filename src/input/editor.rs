@@ -122,3 +122,52 @@ impl App {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    use crate::app::{App, AppMode};
+
+    #[test]
+    fn esc_in_insert_mode_returns_to_normal() {
+        let dir = std::env::temp_dir().join("mdt-test-editor-esc");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("test.md"), "# Test").unwrap();
+
+        let mut app = App::new(dir.clone()).unwrap();
+        app.mode = AppMode::Insert;
+
+        let key = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
+        app.handle_insert_key(key);
+
+        assert_eq!(app.mode, AppMode::Normal);
+        assert!(app.status_message.is_empty());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn i_key_in_editor_normal_enters_insert() {
+        let dir = std::env::temp_dir().join("mdt-test-editor-i");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("test.md"), "# Test").unwrap();
+
+        let mut app = App::new(dir.clone()).unwrap();
+        app.open_file(&dir.join("test.md"));
+        app.enter_editor();
+
+        // enter_editor sets Insert mode; switch to Normal for this test.
+        app.mode = AppMode::Normal;
+
+        let key = KeyEvent::new(KeyCode::Char('i'), KeyModifiers::NONE);
+        app.handle_editor_normal_key(key);
+
+        assert_eq!(app.mode, AppMode::Insert);
+        assert_eq!(app.status_message, "-- INSERT --");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}

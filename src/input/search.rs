@@ -155,3 +155,50 @@ impl App {
         self.status_message.clear();
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    use crate::app::{App, AppMode};
+
+    #[test]
+    fn esc_in_search_clears_and_returns_to_normal() {
+        let dir = std::env::temp_dir().join("mdt-test-search-esc");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("test.md"), "# Test").unwrap();
+
+        let mut app = App::new(dir.clone()).unwrap();
+        app.mode = AppMode::Search;
+        app.search_active = true;
+        app.search_query = "hello".to_string();
+
+        let key = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
+        app.handle_search_key(key);
+
+        assert_eq!(app.mode, AppMode::Normal);
+        assert!(!app.search_active);
+        assert!(app.search_query.is_empty());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn char_keys_append_to_search_query() {
+        let dir = std::env::temp_dir().join("mdt-test-search-char");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("test.md"), "# Test").unwrap();
+
+        let mut app = App::new(dir.clone()).unwrap();
+        app.mode = AppMode::Search;
+
+        app.handle_search_key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE));
+        app.handle_search_key(KeyEvent::new(KeyCode::Char('b'), KeyModifiers::NONE));
+
+        assert_eq!(app.search_query, "ab");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}

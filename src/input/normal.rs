@@ -229,3 +229,51 @@ impl App {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    use crate::app::{App, AppMode, Focus};
+
+    #[test]
+    fn j_key_in_file_list_dispatches_tree_navigation() {
+        let dir = std::env::temp_dir().join("mdt-test-normal-j");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("a.md"), "# A").unwrap();
+        std::fs::write(dir.join("b.md"), "# B").unwrap();
+
+        let mut app = App::new(dir.clone()).unwrap();
+        assert_eq!(app.focus, Focus::FileList);
+        assert_eq!(app.mode, AppMode::Normal);
+
+        let key = KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE);
+        app.handle_normal_key(key);
+
+        // Dispatch went to FileList branch — mode and focus unchanged.
+        assert_eq!(app.mode, AppMode::Normal);
+        assert_eq!(app.focus, Focus::FileList);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn colon_key_enters_command_mode() {
+        let dir = std::env::temp_dir().join("mdt-test-normal-colon");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("test.md"), "# Test").unwrap();
+
+        let mut app = App::new(dir.clone()).unwrap();
+        assert_eq!(app.mode, AppMode::Normal);
+
+        let key = KeyEvent::new(KeyCode::Char(':'), KeyModifiers::NONE);
+        app.handle_normal_key(key);
+
+        assert_eq!(app.mode, AppMode::Command);
+        assert!(app.command_buffer.is_empty());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}

@@ -77,3 +77,47 @@ impl App {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    use crate::app::{App, AppMode};
+
+    #[test]
+    fn execute_quit_sets_should_quit() {
+        let dir = std::env::temp_dir().join("mdt-test-cmd-quit");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("test.md"), "# Test").unwrap();
+
+        let mut app = App::new(dir.clone()).unwrap();
+        assert!(!app.should_quit);
+
+        app.execute_command("q");
+
+        assert!(app.should_quit);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn esc_in_command_mode_returns_to_normal() {
+        let dir = std::env::temp_dir().join("mdt-test-cmd-esc");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("test.md"), "# Test").unwrap();
+
+        let mut app = App::new(dir.clone()).unwrap();
+        app.mode = AppMode::Command;
+        app.command_buffer = "some".to_string();
+
+        let key = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
+        app.handle_command_key(key);
+
+        assert_eq!(app.mode, AppMode::Normal);
+        assert!(app.command_buffer.is_empty());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
