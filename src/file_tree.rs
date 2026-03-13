@@ -97,26 +97,17 @@ fn build_items_recursive(
 /// Recursively check whether `dir` contains at least one `.md` file.
 /// `max_depth` limits how deep we look (0 means only check direct children).
 fn dir_contains_md(dir: &Path, max_depth: u32) -> bool {
-    let read = match fs::read_dir(dir) {
-        Ok(r) => r,
-        Err(_) => return false,
-    };
+    let Ok(read) = fs::read_dir(dir) else { return false };
 
     for result in read {
-        let de = match result {
-            Ok(d) => d,
-            Err(_) => continue,
-        };
+        let Ok(de) = result else { continue };
 
         let name = de.file_name().to_string_lossy().into_owned();
         if name.starts_with('.') {
             continue;
         }
 
-        let ft = match de.file_type() {
-            Ok(t) => t,
-            Err(_) => continue,
-        };
+        let Ok(ft) = de.file_type() else { continue };
 
         if ft.is_file() && has_md_extension(&name) {
             return true;

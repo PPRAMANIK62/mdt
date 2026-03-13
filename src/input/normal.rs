@@ -118,7 +118,7 @@ impl App {
                 // Clear active search results
                 self.clear_search();
             }
-            KeyCode::Char('i') | KeyCode::Char('e') => {
+            KeyCode::Char('i' | 'e') => {
                 if self.focus == Focus::Preview {
                     self.enter_editor();
                 }
