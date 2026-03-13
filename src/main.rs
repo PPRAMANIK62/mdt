@@ -79,6 +79,7 @@ fn run_loop(
                     needs_redraw = true;
                 }
                 Event::Resize(_, _) => {
+                    terminal.autoresize()?;
                     needs_redraw = true;
                 }
                 _ => {}

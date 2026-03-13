@@ -68,6 +68,7 @@ pub(crate) struct DocumentState {
     pub(crate) rendered_lines: Vec<Line<'static>>,
     pub(crate) scroll_offset: usize,
     pub(crate) viewport_height: usize,
+    pub(crate) viewport_width: usize,
 }
 
 /// Top-level application state.
@@ -111,6 +112,7 @@ impl App {
                 rendered_lines: Vec::new(),
                 scroll_offset: 0,
                 viewport_height: 0,
+                viewport_width: 0,
             },
             search: SearchState {
                 active: false,

@@ -106,7 +106,7 @@ impl App {
             Ok(()) => {
                 // Update stored content and re-render markdown preview.
                 self.document.file_content = content;
-                let rendered = render_markdown(&self.document.file_content, None);
+                let rendered = render_markdown(&self.document.file_content, if self.document.viewport_width > 0 { Some(self.document.viewport_width) } else { None });
                 self.document.rendered_lines = rendered.lines;
                 self.editor.is_dirty = false;
 

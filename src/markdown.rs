@@ -1863,4 +1863,12 @@ mod tests {
         assert!(joined.contains('┌'), "Missing table top border");
         assert!(joined.contains('┘'), "Missing table bottom border");
     }
+
+    #[test]
+    fn width_change_produces_different_line_count() {
+        let input = "This is a paragraph with enough words to demonstrate that narrower width produces more lines";
+        let wide = render_at_width(input, 80);
+        let narrow = render_at_width(input, 20);
+        assert!(narrow.lines.len() > wide.lines.len(), "Narrow should have more lines");
+    }
 }

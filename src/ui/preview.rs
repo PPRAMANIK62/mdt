@@ -10,6 +10,7 @@ use ratatui::widgets::{Block, Padding, Paragraph, Wrap};
 use ratatui::Frame;
 
 use crate::app::App;
+use crate::markdown::render_markdown;
 
 /// Draw the preview pane with virtual scrolling.
 ///
@@ -22,6 +23,19 @@ pub fn draw_preview(frame: &mut Frame, app: &mut App, area: Rect) {
     // Side effect: viewport_height must be updated every frame because the terminal
     // can resize at any time. Scroll clamping in input handling depends on this value.
     app.document.viewport_height = inner.height as usize;
+
+    // Re-render when viewport width changes (e.g. terminal resize, file tree toggle).
+    let new_width = inner.width as usize;
+    if new_width != app.document.viewport_width && app.document.current_file.is_some() {
+        let rendered = render_markdown(&app.document.file_content, Some(new_width));
+        app.document.rendered_lines = rendered.lines;
+        app.document.viewport_width = new_width;
+        // Clamp scroll offset after re-render
+        let max_scroll = app.document.rendered_lines.len().saturating_sub(inner.height as usize);
+        if app.document.scroll_offset > max_scroll {
+            app.document.scroll_offset = max_scroll;
+        }
+    }
 
     if app.document.rendered_lines.is_empty() {
         let placeholder = Paragraph::new("Select a file to preview").block(block);
