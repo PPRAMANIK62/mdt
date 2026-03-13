@@ -28,13 +28,11 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         } else {
             preview::draw_preview(frame, app, content_area);
         }
-    } else {
-        if let Some(ref textarea) = app.textarea {
+    } else if let Some(ref textarea) = app.textarea {
             editor::draw_editor(frame, textarea, main_area);
         } else {
             preview::draw_preview(frame, app, main_area);
         }
-    }
 
     // --- Status bar ---
     draw_status_bar(frame, app, status_area);
