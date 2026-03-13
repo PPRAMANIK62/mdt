@@ -383,10 +383,8 @@ impl App {
                 self.rendered_lines = rendered.lines;
                 self.is_dirty = false;
 
-                let name = path
-                    .file_name()
-                    .map(|n| n.to_string_lossy().into_owned())
-                    .unwrap_or_default();
+                let name =
+                    path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
                 self.status_message = format!("\"{}\" written", name);
                 true
             }
@@ -500,10 +498,8 @@ impl App {
                 self.file_content = content;
                 self.current_file = Some(path.to_path_buf());
                 self.scroll_offset = 0;
-                self.status_message = path
-                    .file_name()
-                    .map(|n| n.to_string_lossy().into_owned())
-                    .unwrap_or_default();
+                self.status_message =
+                    path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
             }
             Err(e) => {
                 self.status_message = format!("Error: {e}");
@@ -558,9 +554,7 @@ impl App {
     }
 
     fn max_scroll(&self) -> usize {
-        self.rendered_lines
-            .len()
-            .saturating_sub(self.viewport_height)
+        self.rendered_lines.len().saturating_sub(self.viewport_height)
     }
 
     fn clamp_scroll(&mut self) {
@@ -624,15 +618,11 @@ impl App {
             if *is_dir {
                 continue;
             }
-            let name = path
-                .file_name()
-                .map(|n| n.to_string_lossy().to_lowercase())
-                .unwrap_or_default();
+            let name =
+                path.file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default();
             if name.contains(&query_lower) {
-                let display_name = path
-                    .file_name()
-                    .map(|n| n.to_string_lossy().into_owned())
-                    .unwrap_or_default();
+                let display_name =
+                    path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
                 let item = TreeItem::new_leaf(id.clone(), display_name);
                 filtered_items.push(item);
                 filtered_map.insert(id.clone(), (path.clone(), *is_dir));
@@ -666,12 +656,8 @@ impl App {
         if let Some(&line_num) = self.search_matches.first() {
             self.scroll_offset = line_num.saturating_sub(2);
             self.clamp_scroll();
-            self.status_message = format!(
-                "/{} [{}/{}]",
-                self.search_query,
-                1,
-                self.search_matches.len()
-            );
+            self.status_message =
+                format!("/{} [{}/{}]", self.search_query, 1, self.search_matches.len());
         } else {
             self.status_message = format!("Pattern not found: {}", self.search_query);
         }
@@ -733,7 +719,6 @@ impl App {
         self.status_message.clear();
     }
 }
-
 
 #[cfg(test)]
 mod tests {

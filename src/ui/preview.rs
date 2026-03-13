@@ -28,10 +28,7 @@ pub fn draw_preview(frame: &mut Frame, app: &mut App, area: Rect) {
         .map(|n| format!(" {} ", n.to_string_lossy()))
         .unwrap_or_else(|| " Preview ".to_string());
 
-    let block = Block::default()
-        .title(title)
-        .borders(Borders::ALL)
-        .border_style(border_style);
+    let block = Block::default().title(title).borders(Borders::ALL).border_style(border_style);
 
     // Inner area height (excluding borders) is the viewport.
     let inner = block.inner(area);
@@ -76,11 +73,7 @@ fn highlight_line<'a>(line: Line<'a>, query: &str, highlight_style: Style) -> Li
         .into_iter()
         .flat_map(|span| highlight_span(span, query, highlight_style))
         .collect();
-    Line {
-        spans: new_spans,
-        style: line.style,
-        alignment: line.alignment,
-    }
+    Line { spans: new_spans, style: line.style, alignment: line.alignment }
 }
 
 /// Split a single span at match boundaries, applying highlight style to matching portions.
@@ -100,17 +93,11 @@ fn highlight_span<'a>(span: Span<'a>, query: &str, highlight_style: Style) -> Ve
 
         // Add pre-match text with original style.
         if abs_pos > last_end {
-            result.push(Span::styled(
-                text[last_end..abs_pos].to_string(),
-                original_style,
-            ));
+            result.push(Span::styled(text[last_end..abs_pos].to_string(), original_style));
         }
 
         // Add matched text with highlight style.
-        result.push(Span::styled(
-            text[abs_pos..match_end].to_string(),
-            highlight_style,
-        ));
+        result.push(Span::styled(text[abs_pos..match_end].to_string(), highlight_style));
 
         last_end = match_end;
         search_start = match_end;

@@ -20,10 +20,7 @@ use app::App;
 
 fn main() -> anyhow::Result<()> {
     // CLI args: `mdt [path]` defaulting to current directory.
-    let path = std::env::args()
-        .nth(1)
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("."));
+    let path = std::env::args().nth(1).map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."));
 
     let mut app = App::new(path)?;
 

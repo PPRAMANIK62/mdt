@@ -44,12 +44,7 @@ impl FileTree {
     pub fn scan(path: &Path) -> Result<Self> {
         let canonical = fs::canonicalize(path)?;
         let entries = scan_dir(&canonical, 0)?;
-        Ok(Self {
-            entries,
-            selected: 0,
-            root_path: canonical.clone(),
-            current_dir: canonical,
-        })
+        Ok(Self { entries, selected: 0, root_path: canonical.clone(), current_dir: canonical })
     }
 
     /// Move selection up by one (clamped at 0).
@@ -101,10 +96,7 @@ impl FileTree {
 }
 
 /// Return type for [`build_tree_items`]: tree items + ID-to-path lookup map.
-pub type TreeBuildResult = (
-    Vec<TreeItem<'static, String>>,
-    HashMap<String, (PathBuf, bool)>,
-);
+pub type TreeBuildResult = (Vec<TreeItem<'static, String>>, HashMap<String, (PathBuf, bool)>);
 
 /// Build a recursive tree of [`TreeItem`]s from a root directory.
 ///
@@ -141,10 +133,7 @@ fn build_items_recursive(
     }
 
     // Sort: directories first, then case-insensitive alphabetical.
-    raw.sort_by(|a, b| {
-        b.2.cmp(&a.2)
-            .then_with(|| a.0.to_lowercase().cmp(&b.0.to_lowercase()))
-    });
+    raw.sort_by(|a, b| b.2.cmp(&a.2).then_with(|| a.0.to_lowercase().cmp(&b.0.to_lowercase())));
 
     let mut items = Vec::new();
     for (name, abs_path, is_dir) in raw {
@@ -194,28 +183,16 @@ fn scan_dir(dir: &Path, depth: usize) -> Result<Vec<FileEntry>> {
 
         if ft.is_dir() {
             if dir_contains_md(&path, 3) {
-                entries.push(FileEntry {
-                    name,
-                    path,
-                    is_dir: true,
-                    depth,
-                });
+                entries.push(FileEntry { name, path, is_dir: true, depth });
             }
         } else if ft.is_file() && has_md_extension(&name) {
-            entries.push(FileEntry {
-                name,
-                path,
-                is_dir: false,
-                depth,
-            });
+            entries.push(FileEntry { name, path, is_dir: false, depth });
         }
     }
 
     // Sort: directories first, then case-insensitive alphabetical.
     entries.sort_by(|a, b| {
-        b.is_dir
-            .cmp(&a.is_dir)
-            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+        b.is_dir.cmp(&a.is_dir).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
     });
 
     Ok(entries)
@@ -319,12 +296,8 @@ mod tests {
         assert!(tree.entries[0].is_dir, "dirs come first");
         assert_eq!(tree.entries[0].name, "docs");
 
-        let file_names: Vec<&str> = tree
-            .entries
-            .iter()
-            .filter(|e| !e.is_dir)
-            .map(|e| e.name.as_str())
-            .collect();
+        let file_names: Vec<&str> =
+            tree.entries.iter().filter(|e| !e.is_dir).map(|e| e.name.as_str()).collect();
         assert_eq!(file_names, vec!["hello.md", "notes.md"]);
 
         cleanup(&dir);

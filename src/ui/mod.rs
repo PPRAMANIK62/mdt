@@ -19,8 +19,9 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     let status_area = outer[1];
 
     if app.show_file_tree {
-        let main_chunks = Layout::horizontal([Constraint::Percentage(25), Constraint::Percentage(75)])
-            .split(main_area);
+        let main_chunks =
+            Layout::horizontal([Constraint::Percentage(25), Constraint::Percentage(75)])
+                .split(main_area);
         draw_file_list(frame, app, main_chunks[0]);
         let content_area = main_chunks[1];
         if let Some(ref textarea) = app.textarea {
@@ -29,10 +30,10 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
             preview::draw_preview(frame, app, content_area);
         }
     } else if let Some(ref textarea) = app.textarea {
-            editor::draw_editor(frame, textarea, main_area);
-        } else {
-            preview::draw_preview(frame, app, main_area);
-        }
+        editor::draw_editor(frame, textarea, main_area);
+    } else {
+        preview::draw_preview(frame, app, main_area);
+    }
 
     // --- Status bar ---
     draw_status_bar(frame, app, status_area);
@@ -51,18 +52,13 @@ fn draw_file_list(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect)
     };
 
     // Use filtered tree items if file search is active, otherwise full tree.
-    let items = if let Some(ref filtered) = app.filtered_tree_items {
-        filtered
-    } else {
-        &app.tree_items
-    };
+    let items =
+        if let Some(ref filtered) = app.filtered_tree_items { filtered } else { &app.tree_items };
 
     // Show empty vault message if no items.
     if items.is_empty() {
-        let block = Block::default()
-            .title(" Files ")
-            .borders(Borders::ALL)
-            .border_style(border_style);
+        let block =
+            Block::default().title(" Files ").borders(Borders::ALL).border_style(border_style);
         let msg = Paragraph::new("No markdown files found")
             .block(block)
             .style(Style::default().fg(Color::DarkGray));
@@ -73,10 +69,7 @@ fn draw_file_list(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect)
     let tree_widget = match Tree::new(items) {
         Ok(tree) => tree
             .block(
-                Block::default()
-                    .title(" Files ")
-                    .borders(Borders::ALL)
-                    .border_style(border_style),
+                Block::default().title(" Files ").borders(Borders::ALL).border_style(border_style),
             )
             .highlight_style(Style::default().add_modifier(Modifier::REVERSED))
             .node_open_symbol("\u{25bc} ")
@@ -109,9 +102,7 @@ fn draw_status_bar(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
 
     // Center: file path + dirty indicator + status message.
     let file_info: String = if let Some(ref path) = app.current_file {
-        path.file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default()
+        path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
     } else {
         String::new()
     };
@@ -132,11 +123,7 @@ fn draw_status_bar(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
 
     // Right: line position when a file is open.
     let right = if app.current_file.is_some() && !app.rendered_lines.is_empty() {
-        format!(
-            "Ln {}/{} ",
-            app.scroll_offset.saturating_add(1),
-            app.rendered_lines.len()
-        )
+        format!("Ln {}/{} ", app.scroll_offset.saturating_add(1), app.rendered_lines.len())
     } else {
         String::new()
     };
@@ -146,11 +133,7 @@ fn draw_status_bar(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
     let center_len = center.len() + 1; // +1 for space after mode
     let right_len = right.len();
     let used = mode_len + center_len + right_len;
-    let padding = if area.width as usize > used {
-        area.width as usize - used
-    } else {
-        1
-    };
+    let padding = if area.width as usize > used { area.width as usize - used } else { 1 };
 
     let line = Line::from(vec![
         Span::styled(mode, Style::default().add_modifier(Modifier::REVERSED)),

@@ -7,11 +7,11 @@
 use pulldown_cmark::{CodeBlockKind, CowStr, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
-use syntect::easy::ScopeRegionIterator;
-use syntect::parsing::{ParseState, Scope, ScopeStack};
-use syntect::parsing::SyntaxSet;
-use syntect::util::LinesWithEndings;
 use std::sync::OnceLock;
+use syntect::easy::ScopeRegionIterator;
+use syntect::parsing::SyntaxSet;
+use syntect::parsing::{ParseState, Scope, ScopeStack};
+use syntect::util::LinesWithEndings;
 
 /// Render markdown input into styled ratatui [`Text`].
 ///
@@ -39,16 +39,12 @@ pub fn render_markdown(input: &str) -> Text<'static> {
 const H1_STYLE: Style = Style::new().add_modifier(Modifier::BOLD).fg(Color::Cyan);
 const H2_STYLE: Style = Style::new().add_modifier(Modifier::BOLD).fg(Color::Green);
 const H3_STYLE: Style = Style::new().add_modifier(Modifier::BOLD);
-const H4_STYLE: Style = Style::new()
-    .add_modifier(Modifier::BOLD)
-    .fg(Color::DarkGray);
+const H4_STYLE: Style = Style::new().add_modifier(Modifier::BOLD).fg(Color::DarkGray);
 const BOLD_STYLE: Style = Style::new().add_modifier(Modifier::BOLD);
 const ITALIC_STYLE: Style = Style::new().add_modifier(Modifier::ITALIC);
 const STRIKETHROUGH_STYLE: Style = Style::new().add_modifier(Modifier::CROSSED_OUT);
 const INLINE_CODE_STYLE: Style = Style::new().fg(Color::Yellow);
-const LINK_STYLE: Style = Style::new()
-    .add_modifier(Modifier::UNDERLINED)
-    .fg(Color::Blue);
+const LINK_STYLE: Style = Style::new().add_modifier(Modifier::UNDERLINED).fg(Color::Blue);
 const BLOCKQUOTE_STYLE: Style = Style::new().fg(Color::DarkGray);
 const CODE_BORDER_STYLE: Style = Style::new().fg(Color::DarkGray);
 const CODE_DEFAULT_STYLE: Style = Style::new();
@@ -427,9 +423,10 @@ impl Renderer {
             TagEnd::TableCell => {
                 let mut spans = std::mem::take(&mut self.table_cell_spans);
                 if self.in_table_header {
-                    spans = spans.into_iter().map(|s| {
-                        Span::styled(s.content, s.style.patch(TABLE_HEADER_STYLE))
-                    }).collect();
+                    spans = spans
+                        .into_iter()
+                        .map(|s| Span::styled(s.content, s.style.patch(TABLE_HEADER_STYLE)))
+                        .collect();
                 }
                 if let Some(last_row) = self.table_rows.last_mut() {
                     last_row.push(spans);
@@ -488,8 +485,7 @@ impl Renderer {
                 self.flush_line();
             }
             if !line.is_empty() {
-                self.current_spans
-                    .push(Span::styled(line.to_string(), style));
+                self.current_spans.push(Span::styled(line.to_string(), style));
             }
         }
     }
@@ -541,8 +537,7 @@ impl Renderer {
         let checkbox = if checked { "☑ " } else { "☐ " };
         let indent = self.list_indent_prefix();
         let style = self.current_style();
-        self.current_spans
-            .push(Span::styled(indent, Style::default()));
+        self.current_spans.push(Span::styled(indent, Style::default()));
         self.current_spans.push(Span::styled(checkbox, style));
         // Mark that we've already emitted the marker.
         self.pending_list_marker = false;
@@ -554,8 +549,7 @@ impl Renderer {
             if i > 0 {
                 self.flush_line();
             }
-            self.current_spans
-                .push(Span::styled(line.to_string(), Style::default()));
+            self.current_spans.push(Span::styled(line.to_string(), Style::default()));
         }
         self.flush_line();
     }
@@ -564,8 +558,7 @@ impl Renderer {
         // Strip inline HTML tags, render content if any.
         let content = html.to_string();
         if !content.is_empty() {
-            self.current_spans
-                .push(Span::styled(content, self.current_style()));
+            self.current_spans.push(Span::styled(content, self.current_style()));
         }
     }
 
@@ -602,8 +595,7 @@ impl Renderer {
             let remaining = inner.saturating_sub(label_width);
             format!("┌{}{}┐", label, "─".repeat(remaining))
         };
-        self.lines
-            .push(Line::from(Span::styled(header_text, CODE_BORDER_STYLE)));
+        self.lines.push(Line::from(Span::styled(header_text, CODE_BORDER_STYLE)));
 
         // Code lines with right border.
         for line_spans in highlighted_lines {
@@ -611,27 +603,21 @@ impl Renderer {
             let padding = max_width.saturating_sub(content_width);
             let mut spans = vec![Span::styled("│ ", CODE_BORDER_STYLE)];
             spans.extend(line_spans);
-            spans.push(Span::styled(
-                format!("{} │", " ".repeat(padding)),
-                CODE_BORDER_STYLE,
-            ));
+            spans.push(Span::styled(format!("{} │", " ".repeat(padding)), CODE_BORDER_STYLE));
             self.lines.push(Line::from(spans));
         }
 
         // Footer: └─...─┘
-        self.lines.push(Line::from(Span::styled(
-            format!("└{}┘", "─".repeat(inner)),
-            CODE_BORDER_STYLE,
-        )));
+        self.lines
+            .push(Line::from(Span::styled(format!("└{}┘", "─".repeat(inner)), CODE_BORDER_STYLE)));
     }
 
     // ── Table rendering ─────────────────────────────────────────────────
 
     fn render_table(&mut self) {
         // Filter out empty trailing rows
-        let rows: Vec<&Vec<Vec<Span<'static>>>> = self.table_rows.iter()
-            .filter(|r| !r.is_empty())
-            .collect();
+        let rows: Vec<&Vec<Vec<Span<'static>>>> =
+            self.table_rows.iter().filter(|r| !r.is_empty()).collect();
 
         if rows.is_empty() {
             return;
@@ -682,14 +668,12 @@ impl Renderer {
                     Some(c) => c,
                     None => &[],
                 };
-                let content_width: usize = cell_spans.iter().map(|s| s.content.chars().count()).sum();
+                let content_width: usize =
+                    cell_spans.iter().map(|s| s.content.chars().count()).sum();
                 let padding = col_width.saturating_sub(content_width);
 
                 spans.extend(cell_spans.iter().cloned());
-                spans.push(Span::styled(
-                    format!("{} │ ", " ".repeat(padding)),
-                    TABLE_BORDER_STYLE,
-                ));
+                spans.push(Span::styled(format!("{} │ ", " ".repeat(padding)), TABLE_BORDER_STYLE));
             }
 
             self.lines.push(Line::from(spans));
@@ -708,11 +692,7 @@ impl Renderer {
         let ss = syntax_set();
 
         // Try to find syntax for the language.
-        let syntax = if lang.is_empty() {
-            None
-        } else {
-            ss.find_syntax_by_token(lang)
-        };
+        let syntax = if lang.is_empty() { None } else { ss.find_syntax_by_token(lang) };
 
         match syntax {
             Some(syntax) => {
@@ -731,10 +711,7 @@ impl Renderer {
                             continue;
                         }
                         let style = scope_to_style(&stack, matchers);
-                        spans.push(Span::styled(
-                            s.trim_end_matches('\n').to_string(),
-                            style,
-                        ));
+                        spans.push(Span::styled(s.trim_end_matches('\n').to_string(), style));
                     }
 
                     result.push(spans);
@@ -767,21 +744,15 @@ impl Renderer {
                     } else {
                         "▪"
                     };
+                    self.current_spans.push(Span::styled(indent, Style::default()));
                     self.current_spans
-                        .push(Span::styled(indent, Style::default()));
-                    self.current_spans.push(Span::styled(
-                        format!("{bullet} "),
-                        Style::new().fg(Color::DarkGray),
-                    ));
+                        .push(Span::styled(format!("{bullet} "), Style::new().fg(Color::DarkGray)));
                 }
                 Some(ref mut num) => {
                     // Ordered list — use number.
+                    self.current_spans.push(Span::styled(indent, Style::default()));
                     self.current_spans
-                        .push(Span::styled(indent, Style::default()));
-                    self.current_spans.push(Span::styled(
-                        format!("{num}. "),
-                        Style::new().fg(Color::DarkGray),
-                    ));
+                        .push(Span::styled(format!("{num}. "), Style::new().fg(Color::DarkGray)));
                     *num += 1;
                 }
             }
@@ -855,15 +826,9 @@ mod tests {
     fn text_content(text: &Text<'_>) -> Vec<String> {
         text.lines
             .iter()
-            .map(|line| {
-                line.spans
-                    .iter()
-                    .map(|s| s.content.as_ref())
-                    .collect::<String>()
-            })
+            .map(|line| line.spans.iter().map(|s| s.content.as_ref()).collect::<String>())
             .collect()
     }
-
 
     #[test]
     fn headings_stripped_and_styled() {
@@ -878,17 +843,11 @@ mod tests {
         }
 
         // Find the heading lines and check their styles.
-        let h1_line = text
-            .lines
-            .iter()
-            .find(|l| l.spans.iter().any(|s| s.content.contains("Heading 1")));
+        let h1_line =
+            text.lines.iter().find(|l| l.spans.iter().any(|s| s.content.contains("Heading 1")));
         assert!(h1_line.is_some(), "H1 heading not found");
-        let h1_span = h1_line
-            .unwrap()
-            .spans
-            .iter()
-            .find(|s| s.content.contains("Heading 1"))
-            .unwrap();
+        let h1_span =
+            h1_line.unwrap().spans.iter().find(|s| s.content.contains("Heading 1")).unwrap();
         assert!(h1_span.style.add_modifier.contains(Modifier::BOLD));
     }
 
