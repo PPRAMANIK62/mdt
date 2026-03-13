@@ -969,7 +969,7 @@ impl Renderer {
 
             // Render each visual sub-line of this row.
             for sub_line in 0..row_height {
-                let mut spans: Vec<Span<'static>> = Vec::new();
+                let mut spans: Vec<Span<'static>> = Vec::with_capacity(col_widths.len() * 2 + 2);
                 spans.push(Span::styled("│ ", TABLE_BORDER_STYLE));
 
                 for (col_idx, col_width) in col_widths.iter().enumerate() {

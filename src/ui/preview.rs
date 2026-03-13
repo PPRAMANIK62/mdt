@@ -93,11 +93,10 @@ pub fn draw_preview(frame: &mut Frame, app: &mut App, area: Rect) {
 
 /// Highlight all occurrences of `query` (lowercase) in a line by splitting spans.
 fn highlight_line<'a>(line: Line<'a>, query: &str, highlight_style: Style) -> Line<'a> {
-    let new_spans: Vec<Span<'a>> = line
-        .spans
-        .into_iter()
-        .flat_map(|span| highlight_span(span, query, highlight_style))
-        .collect();
+    let mut new_spans: Vec<Span<'a>> = Vec::with_capacity(line.spans.len());
+    for span in line.spans {
+        new_spans.extend(highlight_span(span, query, highlight_style));
+    }
     Line { spans: new_spans, style: line.style, alignment: line.alignment }
 }
 

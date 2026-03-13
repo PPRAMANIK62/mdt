@@ -56,11 +56,10 @@ impl App {
             if *is_dir {
                 continue;
             }
-            let name =
-                path.file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default();
-            if name.contains(&query_lower) {
-                let display_name =
-                    path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            let file_name =
+                path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default();
+            if file_name.to_lowercase().contains(&query_lower) {
+                let display_name = file_name.into_owned();
                 let item = TreeItem::new_leaf(
                     id.clone(),
                     Line::from(Span::styled(
@@ -90,9 +89,13 @@ impl App {
         }
 
         let query_lower = self.search.query.to_lowercase();
+        let mut text_buf = String::new();
         for (i, line) in self.document.rendered_lines.iter().enumerate() {
-            let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
-            if text.to_lowercase().contains(&query_lower) {
+            text_buf.clear();
+            for s in &line.spans {
+                text_buf.push_str(s.content.as_ref());
+            }
+            if text_buf.to_lowercase().contains(&query_lower) {
                 self.search.matches.push(i);
             }
         }
