@@ -89,14 +89,14 @@ impl App {
     }
 
     /// Save the editor content to disk, re-render markdown.
-    pub(crate) fn save_editor(&mut self) -> bool {
+    pub(crate) fn save_editor(&mut self) -> Result<(), String> {
         let Some(ref path) = self.document.current_file else {
             self.status_message = "No file path".to_string();
-            return false;
+            return Err("No file path".to_string());
         };
         let Some(ref textarea) = self.editor.textarea else {
             self.status_message = "Not in editor".to_string();
-            return false;
+            return Err("Not in editor".to_string());
         };
 
         let content = textarea.lines().join("\n") + "\n";
@@ -111,11 +111,11 @@ impl App {
                 self.editor.is_dirty = false;
 
                 self.status_message = "written".to_string();
-                true
+                Ok(())
             }
             Err(e) => {
                 self.status_message = format!("Error saving: {e}");
-                false
+                Err(format!("Error saving: {e}"))
             }
         }
     }
@@ -174,7 +174,7 @@ mod tests {
         app.enter_editor();
 
         let saved = app.save_editor();
-        assert!(saved);
+        assert!(saved.is_ok());
 
         let on_disk = std::fs::read_to_string(&file).unwrap();
         assert!(on_disk.ends_with('\n'), "saved file must end with newline");
@@ -192,7 +192,7 @@ mod tests {
         app.enter_editor();
 
         let saved = app.save_editor();
-        assert!(saved);
+        assert!(saved.is_ok());
 
         let on_disk = std::fs::read_to_string(&file).unwrap();
         assert_eq!(on_disk, "\n", "empty editor should save as single newline");

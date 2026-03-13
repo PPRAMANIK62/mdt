@@ -57,14 +57,14 @@ impl App {
             }
             "w" | "write" => {
                 if in_editor {
-                    self.save_editor();
+                    let _ = self.save_editor();
                 } else {
                     self.status_message = "Not in editor".to_string();
                 }
             }
             "wq" | "x" => {
                 if in_editor {
-                    if self.save_editor() {
+                    if self.save_editor().is_ok() {
                         self.exit_editor();
                     }
                 } else {
