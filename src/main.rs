@@ -1,5 +1,6 @@
 mod app;
 mod file_tree;
+mod input;
 mod markdown;
 mod ui;
 
