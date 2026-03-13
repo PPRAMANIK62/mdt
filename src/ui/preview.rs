@@ -140,3 +140,66 @@ fn highlight_span<'a>(span: Span<'a>, query: &str, highlight_style: Style) -> Ve
 
     result
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::backend::TestBackend;
+    use ratatui::layout::Position;
+    use ratatui::Terminal;
+
+    use crate::app::App;
+    use crate::test_util::TempTestDir;
+
+    #[test]
+    fn highlight_span_no_match_returns_original() {
+        let span = Span::raw("hello world");
+        let style = Style::default().fg(Color::Red);
+        let result = highlight_span(span.clone(), "xyz", style);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].content, "hello world");
+    }
+
+    #[test]
+    fn highlight_span_splits_at_match_boundary() {
+        let span = Span::raw("hello world!");
+        let style = Style::default().fg(Color::Red);
+        let result = highlight_span(span, "world", style);
+        assert_eq!(result.len(), 3); // "hello " + "world" + "!"
+        assert_eq!(result[0].content, "hello ");
+        assert_eq!(result[1].content, "world");
+        assert_eq!(result[1].style.fg, Some(Color::Red));
+        assert_eq!(result[2].content, "!");
+    }
+
+    #[test]
+    fn highlight_line_highlights_multiple_occurrences() {
+        let line = Line::from(vec![Span::raw("foo bar foo baz foo")]);
+        let style = Style::default().fg(Color::Yellow);
+        let result = highlight_line(line, "foo", style);
+        let foo_count = result.spans.iter().filter(|s| s.content == "foo").count();
+        assert_eq!(foo_count, 3);
+    }
+
+    #[test]
+    fn draw_preview_empty_shows_placeholder() {
+        let dir = TempTestDir::new("mdt-test-preview");
+        dir.create_file("test.md", "");
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        let backend = TestBackend::new(60, 10);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| {
+                let area = f.area();
+                draw_preview(f, &mut app, area);
+            })
+            .unwrap();
+        let buf = terminal.backend().buffer();
+        let text: String = (0..buf.area.height)
+            .flat_map(|y| (0..buf.area.width).map(move |x| (x, y)))
+            .filter_map(|(x, y)| buf.cell(Position::new(x, y)))
+            .map(ratatui::buffer::Cell::symbol)
+            .collect();
+        assert!(text.contains("Select a file"));
+    }
+}
