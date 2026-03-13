@@ -197,4 +197,126 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    // ── State machine transitions ──────────────────────────────────
+
+    /// Helper: create a key press `Event` for use with `handle_event`.
+    fn key_event(code: KeyCode) -> Event {
+        use crossterm::event::{KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+        Event::Key(KeyEvent {
+            code,
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        })
+    }
+
+    #[test]
+    fn transition_normal_to_command_and_back() {
+        let dir = std::env::temp_dir().join("mdt-test-cmd-transition");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let mut app = App::new(dir.clone()).unwrap();
+        assert_eq!(app.mode, AppMode::Normal);
+
+        // ':' enters Command mode.
+        app.handle_event(key_event(KeyCode::Char(':')));
+        assert_eq!(app.mode, AppMode::Command);
+
+        // Esc returns to Normal.
+        app.handle_event(key_event(KeyCode::Esc));
+        assert_eq!(app.mode, AppMode::Normal);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn transition_normal_to_search_and_back() {
+        let dir = std::env::temp_dir().join("mdt-test-search-transition");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let mut app = App::new(dir.clone()).unwrap();
+        assert_eq!(app.mode, AppMode::Normal);
+
+        // '/' enters Search mode and activates search.
+        app.handle_event(key_event(KeyCode::Char('/')));
+        assert_eq!(app.mode, AppMode::Search);
+        assert!(app.search_active);
+
+        // Esc returns to Normal and deactivates search.
+        app.handle_event(key_event(KeyCode::Esc));
+        assert_eq!(app.mode, AppMode::Normal);
+        assert!(!app.search_active);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn help_toggle_on_and_off() {
+        let dir = std::env::temp_dir().join("mdt-test-help-toggle");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let mut app = App::new(dir.clone()).unwrap();
+        assert!(!app.show_help);
+
+        // '?' toggles help on.
+        app.handle_event(key_event(KeyCode::Char('?')));
+        assert!(app.show_help);
+
+        // '?' again toggles help off (while help is showing, '?' dismisses it).
+        app.handle_event(key_event(KeyCode::Char('?')));
+        assert!(!app.show_help);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn focus_toggle_cycles_between_panels() {
+        let dir = std::env::temp_dir().join("mdt-test-focus-toggle");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let mut app = App::new(dir.clone()).unwrap();
+        assert_eq!(app.focus, Focus::FileList);
+
+        // Tab switches to Preview.
+        app.handle_event(key_event(KeyCode::Tab));
+        assert_eq!(app.focus, Focus::Preview);
+
+        // Tab switches back to FileList.
+        app.handle_event(key_event(KeyCode::Tab));
+        assert_eq!(app.focus, Focus::FileList);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn ctrl_c_quits_from_any_mode() {
+        use crossterm::event::{KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+
+        let dir = std::env::temp_dir().join("mdt-test-ctrl-c-quit");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let mut app = App::new(dir.clone()).unwrap();
+
+        // Enter Command mode first.
+        app.handle_event(key_event(KeyCode::Char(':')));
+        assert_eq!(app.mode, AppMode::Command);
+
+        // Ctrl+C quits even from Command mode.
+        let ctrl_c = Event::Key(KeyEvent {
+            code: KeyCode::Char('c'),
+            modifiers: KeyModifiers::CONTROL,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        });
+        app.handle_event(ctrl_c);
+        assert!(app.should_quit);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
