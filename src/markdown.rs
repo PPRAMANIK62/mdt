@@ -36,7 +36,6 @@ pub fn render_markdown(input: &str, available_width: Option<usize>) -> Text<'sta
     renderer.into_text()
 }
 
-#[allow(dead_code)] // Will be used by render_markdown width-aware path
 /// Word-wrap a slice of styled [`Span`]s to fit within `max_width` columns.
 ///
 /// Returns a `Vec` of visual lines, each a `Vec<Span>`. Styles are preserved
