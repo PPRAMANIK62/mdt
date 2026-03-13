@@ -14,7 +14,9 @@ use tui_tree_widget::TreeItem;
 pub type TreeBuildResult = (Vec<TreeItem<'static, String>>, HashMap<String, (PathBuf, bool)>);
 
 /// Maximum directory depth when scanning for `.md` files.
-const DIR_SCAN_MAX_DEPTH: u32 = 3;
+/// Higher values find more files but slow startup for deeply nested trees.
+/// 5 covers most project structures (e.g., `docs/api/v2/guides/intro.md`).
+const DIR_SCAN_MAX_DEPTH: u32 = 5;
 
 /// Build a recursive tree of [`TreeItem`]s from a root directory.
 ///
