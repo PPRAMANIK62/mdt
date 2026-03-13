@@ -103,11 +103,11 @@ fn highlight_line<'a>(line: Line<'a>, query: &str, highlight_style: Style) -> Li
 
 /// Split a single span at match boundaries, applying highlight style to matching portions.
 fn highlight_span<'a>(span: Span<'a>, query: &str, highlight_style: Style) -> Vec<Span<'a>> {
-    let text = span.content.to_string();
+    let text: &str = span.content.as_ref();
     let text_lower = text.to_lowercase();
     let original_style = span.style;
 
-    let mut result = Vec::new();
+    let mut result = Vec::with_capacity(3);
     let mut last_end = 0;
 
     // Find all case-insensitive matches.
