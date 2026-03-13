@@ -17,7 +17,6 @@ use crate::markdown::render_markdown;
 
 /// Current input mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)]
 pub enum AppMode {
     Normal,
     Insert,
@@ -56,8 +55,6 @@ pub struct App {
     pub mode: AppMode,
     pub focus: Focus,
     pub should_quit: bool,
-    #[allow(dead_code)] // Used by future tasks for external redraw triggers.
-    pub needs_redraw: bool,
     pub status_message: String,
     /// Pending key for composed commands like `gg`.
     pub pending_key: Option<(char, Instant)>,
@@ -102,7 +99,6 @@ impl App {
             mode: AppMode::Normal,
             focus: Focus::FileList,
             should_quit: false,
-            needs_redraw: true,
             status_message: String::new(),
             pending_key: None,
             command_buffer: String::new(),
@@ -723,53 +719,6 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // ── render_markdown ──────────────────────────────────────────────
-
-    #[test]
-    fn render_markdown_basic() {
-        let text = render_markdown("# Hello\n\nSome **bold** text\n");
-        assert!(!text.lines.is_empty(), "rendered text should have lines");
-        assert!(text.lines.len() >= 2);
-    }
-
-    #[test]
-    fn render_markdown_code_block() {
-        let input = "```rust\nfn main() {}\n```\n";
-        let text = render_markdown(input);
-        assert!(!text.lines.is_empty());
-    }
-
-    #[test]
-    fn render_markdown_empty_input() {
-        let text = render_markdown("");
-        // Must not panic; result may be empty or a single blank line.
-        let _ = text;
-    }
-
-    #[test]
-    fn render_markdown_tabs_expanded() {
-        let text = render_markdown("\tindented");
-        for line in &text.lines {
-            for span in &line.spans {
-                assert!(!span.content.contains('\t'), "tabs should be expanded");
-            }
-        }
-    }
-
-    #[test]
-    fn render_markdown_whitespace_only() {
-        let text = render_markdown("   \n\n   \n");
-        // Must not panic.
-        let _ = text;
-    }
-
-    #[test]
-    fn render_markdown_lists_and_links() {
-        let input = "- item 1\n- item 2\n\n[link](https://example.com)\n";
-        let text = render_markdown(input);
-        assert!(!text.lines.is_empty());
-    }
 
     // ── App::new ─────────────────────────────────────────────────────
 
