@@ -81,6 +81,8 @@ pub struct App {
     pub filtered_path_map: Option<HashMap<String, (PathBuf, bool)>>,
     /// Whether the help overlay is shown.
     pub show_help: bool,
+    /// Whether the file tree panel is visible.
+    pub show_file_tree: bool,
 }
 
 impl App {
@@ -113,6 +115,7 @@ impl App {
             filtered_tree_items: None,
             filtered_path_map: None,
             show_help: false,
+            show_file_tree: true,
         })
     }
 
@@ -177,17 +180,23 @@ impl App {
 
         // Check for composed commands (e.g., gg) — works in both FileList and Preview.
         if let Some((pending_char, instant)) = self.pending_key.take() {
-            if instant.elapsed().as_millis() < 500
-                && pending_char == 'g'
-                && key.code == KeyCode::Char('g')
-            {
-                match self.focus {
-                    Focus::Preview => self.scroll_to_top(),
-                    Focus::FileList => {
-                        self.tree_state.select_first();
+            if instant.elapsed().as_millis() < 500 {
+                match (pending_char, key.code) {
+                    ('g', KeyCode::Char('g')) => {
+                        match self.focus {
+                            Focus::Preview => self.scroll_to_top(),
+                            Focus::FileList => {
+                                self.tree_state.select_first();
+                            }
+                        }
+                        return;
                     }
+                    (' ', KeyCode::Char('e')) => {
+                        self.toggle_file_tree();
+                        return;
+                    }
+                    _ => {} // expired or unrecognized — fall through
                 }
-                return;
             }
             // Pending key expired or didn't match — fall through to normal handling.
         }
@@ -232,6 +241,11 @@ impl App {
             // --- g: start pending key for gg (both focuses) ---
             KeyCode::Char('g') => {
                 self.pending_key = Some(('g', Instant::now()));
+            }
+
+            // --- Space: start pending key for Space+e (leader key) ---
+            KeyCode::Char(' ') => {
+                self.pending_key = Some((' ', Instant::now()));
             }
 
             // --- Preview-only scrolling ---
@@ -296,6 +310,14 @@ impl App {
             KeyCode::Char(':') => {
                 self.mode = AppMode::Command;
                 self.command_buffer.clear();
+            }
+            // Exit editor (with dirty-check warning).
+            KeyCode::Esc => {
+                if self.is_dirty {
+                    self.status_message = "Unsaved changes! :w to save, :q! to discard".to_string();
+                } else {
+                    self.exit_editor();
+                }
             }
             // Forward navigation keys to TextArea (h/j/k/l, arrows, etc.).
             _ => {
@@ -494,6 +516,15 @@ impl App {
             Focus::FileList => Focus::Preview,
             Focus::Preview => Focus::FileList,
         };
+    }
+
+    fn toggle_file_tree(&mut self) {
+        self.show_file_tree = !self.show_file_tree;
+        if self.show_file_tree {
+            self.focus = Focus::FileList;
+        } else {
+            self.focus = Focus::Preview;
+        }
     }
 
     fn scroll_down(&mut self) {

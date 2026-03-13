@@ -18,17 +18,22 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     let main_area = outer[0];
     let status_area = outer[1];
 
-    let main_chunks = Layout::horizontal([Constraint::Percentage(25), Constraint::Percentage(75)])
-        .split(main_area);
-
-    // --- File list ---
-    draw_file_list(frame, app, main_chunks[0]);
-
-    // --- Preview or Editor ---
-    if let Some(ref textarea) = app.textarea {
-        editor::draw_editor(frame, textarea, main_chunks[1]);
+    if app.show_file_tree {
+        let main_chunks = Layout::horizontal([Constraint::Percentage(25), Constraint::Percentage(75)])
+            .split(main_area);
+        draw_file_list(frame, app, main_chunks[0]);
+        let content_area = main_chunks[1];
+        if let Some(ref textarea) = app.textarea {
+            editor::draw_editor(frame, textarea, content_area);
+        } else {
+            preview::draw_preview(frame, app, content_area);
+        }
     } else {
-        preview::draw_preview(frame, app, main_chunks[1]);
+        if let Some(ref textarea) = app.textarea {
+            editor::draw_editor(frame, textarea, main_area);
+        } else {
+            preview::draw_preview(frame, app, main_area);
+        }
     }
 
     // --- Status bar ---
@@ -87,7 +92,7 @@ fn draw_file_list(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect)
 fn draw_status_bar(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
     // In Command mode, show ":" + command_buffer as the full status bar.
     if app.mode == AppMode::Command {
-        let line = Line::from(vec![Span::raw(format!(":{}▌", app.command_buffer))]);
+        let line = Line::from(vec![Span::raw(format!(":{}█", app.command_buffer))]);
         let bar = Paragraph::new(line);
         frame.render_widget(bar, area);
         return;
@@ -95,7 +100,7 @@ fn draw_status_bar(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
 
     // In Search mode, show "/" + search_query as the full status bar.
     if app.mode == AppMode::Search {
-        let line = Line::from(vec![Span::raw(format!("/{}▌", app.search_query))]);
+        let line = Line::from(vec![Span::raw(format!("/{}█", app.search_query))]);
         let bar = Paragraph::new(line);
         frame.render_widget(bar, area);
         return;
@@ -172,7 +177,7 @@ fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {
 
 /// Draw the help overlay popup.
 fn draw_help_overlay(frame: &mut Frame, area: Rect) {
-    let popup_area = centered_rect(40, 18, area);
+    let popup_area = centered_rect(40, 20, area);
 
     // Clear the area behind the popup.
     frame.render_widget(Clear, popup_area);
@@ -187,6 +192,7 @@ fn draw_help_overlay(frame: &mut Frame, area: Rect) {
         Line::from("  j/k       Navigate / Scroll"),
         Line::from("  Enter     Open file / Enter directory"),
         Line::from("  Tab       Switch focus"),
+        Line::from("  Space+e   Toggle file tree"),
         Line::from("  i/e       Edit mode"),
         Line::from("  /         Search"),
         Line::from("  n/N       Next/Previous match"),

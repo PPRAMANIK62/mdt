@@ -53,6 +53,8 @@ const BLOCKQUOTE_STYLE: Style = Style::new().fg(Color::DarkGray);
 const CODE_BORDER_STYLE: Style = Style::new().fg(Color::DarkGray);
 const CODE_DEFAULT_STYLE: Style = Style::new();
 const HR_STYLE: Style = Style::new().fg(Color::DarkGray);
+const TABLE_HEADER_STYLE: Style = Style::new().add_modifier(Modifier::BOLD);
+const TABLE_BORDER_STYLE: Style = Style::new().fg(Color::DarkGray);
 
 // ── Syntax highlighting ─────────────────────────────────────────────────────
 
@@ -215,6 +217,16 @@ struct Renderer {
     link_dest: Option<String>,
     /// Whether we're inside a heading (to apply heading style to all text).
     in_heading: bool,
+    /// Whether we're inside a table.
+    in_table: bool,
+    /// Column alignments for the current table.
+    table_alignments: Vec<pulldown_cmark::Alignment>,
+    /// Buffered table rows. Each row is a vec of cells, each cell is a vec of spans.
+    table_rows: Vec<Vec<Vec<Span<'static>>>>,
+    /// Spans for the current cell being built.
+    table_cell_spans: Vec<Span<'static>>,
+    /// Whether we're in the header row.
+    in_table_header: bool,
 }
 
 impl Renderer {
@@ -232,6 +244,11 @@ impl Renderer {
             needs_newline: false,
             link_dest: None,
             in_heading: false,
+            in_table: false,
+            table_alignments: Vec::new(),
+            table_rows: Vec::new(),
+            table_cell_spans: Vec::new(),
+            in_table_header: false,
         }
     }
 
@@ -335,11 +352,24 @@ impl Renderer {
                 self.link_dest = Some(dest_url.to_string());
                 self.push_merged_style(LINK_STYLE);
             }
+            Tag::Table(alignments) => {
+                if self.needs_newline {
+                    self.push_blank_line();
+                }
+                self.in_table = true;
+                self.table_alignments = alignments.to_vec();
+                self.table_rows.clear();
+            }
+            Tag::TableHead => {
+                self.in_table_header = true;
+            }
+            Tag::TableRow => {
+                // Start a new row — nothing special needed, cells accumulate
+            }
+            Tag::TableCell => {
+                self.table_cell_spans.clear();
+            }
             Tag::Image { .. }
-            | Tag::Table(_)
-            | Tag::TableHead
-            | Tag::TableRow
-            | Tag::TableCell
             | Tag::FootnoteDefinition(_)
             | Tag::HtmlBlock
             | Tag::MetadataBlock(_) => {}
@@ -394,11 +424,35 @@ impl Renderer {
                     }
                 }
             }
+            TagEnd::TableCell => {
+                let mut spans = std::mem::take(&mut self.table_cell_spans);
+                if self.in_table_header {
+                    spans = spans.into_iter().map(|s| {
+                        Span::styled(s.content, s.style.patch(TABLE_HEADER_STYLE))
+                    }).collect();
+                }
+                if let Some(last_row) = self.table_rows.last_mut() {
+                    last_row.push(spans);
+                } else {
+                    self.table_rows.push(vec![spans]);
+                }
+            }
+            TagEnd::TableHead => {
+                self.in_table_header = false;
+                // Push a new empty row for the next body row
+                self.table_rows.push(Vec::new());
+            }
+            TagEnd::TableRow => {
+                self.table_rows.push(Vec::new());
+            }
+            TagEnd::Table => {
+                self.render_table();
+                self.in_table = false;
+                self.table_alignments.clear();
+                self.table_rows.clear();
+                self.needs_newline = true;
+            }
             TagEnd::Image
-            | TagEnd::Table
-            | TagEnd::TableHead
-            | TagEnd::TableRow
-            | TagEnd::TableCell
             | TagEnd::FootnoteDefinition
             | TagEnd::HtmlBlock
             | TagEnd::MetadataBlock(_) => {}
@@ -411,6 +465,12 @@ impl Renderer {
     fn on_text<'a>(&mut self, text: CowStr<'a>) {
         if self.in_code_block {
             self.code_block_buf.push_str(&text);
+            return;
+        }
+
+        if self.in_table {
+            let style = self.current_style();
+            self.table_cell_spans.push(Span::styled(text.to_string(), style));
             return;
         }
 
@@ -439,6 +499,10 @@ impl Renderer {
             self.emit_list_marker();
             self.pending_list_marker = false;
         }
+        if self.in_table {
+            self.table_cell_spans.push(Span::styled(format!(" {} ", code), INLINE_CODE_STYLE));
+            return;
+        }
         // Render inline code with distinct style, padded with spaces.
         let span = Span::styled(format!(" {} ", code), INLINE_CODE_STYLE);
         self.current_spans.push(span);
@@ -447,6 +511,10 @@ impl Renderer {
     fn on_soft_break(&mut self) {
         if self.in_code_block {
             self.code_block_buf.push('\n');
+            return;
+        }
+        if self.in_table {
+            self.table_cell_spans.push(Span::styled(" ", self.current_style()));
             return;
         }
         // Treat soft break as a space in inline context.
@@ -555,6 +623,85 @@ impl Renderer {
             format!("└{}┘", "─".repeat(inner)),
             CODE_BORDER_STYLE,
         )));
+    }
+
+    // ── Table rendering ─────────────────────────────────────────────────
+
+    fn render_table(&mut self) {
+        // Filter out empty trailing rows
+        let rows: Vec<&Vec<Vec<Span<'static>>>> = self.table_rows.iter()
+            .filter(|r| !r.is_empty())
+            .collect();
+
+        if rows.is_empty() {
+            return;
+        }
+
+        let num_cols = rows.iter().map(|r| r.len()).max().unwrap_or(0);
+        if num_cols == 0 {
+            return;
+        }
+
+        // Calculate column widths (max content width per column)
+        let mut col_widths = vec![0usize; num_cols];
+        for row in &rows {
+            for (i, cell) in row.iter().enumerate() {
+                let width: usize = cell.iter().map(|s| s.content.chars().count()).sum();
+                col_widths[i] = col_widths[i].max(width);
+            }
+        }
+        // Minimum column width of 3
+        for w in &mut col_widths {
+            *w = (*w).max(3);
+        }
+
+        // Helper to build a horizontal border line
+        let build_border = |left: &str, mid: &str, right: &str, fill: &str| -> Line<'static> {
+            let mut s = left.to_string();
+            for (i, &w) in col_widths.iter().enumerate() {
+                s.push_str(&fill.repeat(w + 2)); // +2 for padding spaces
+                if i < num_cols - 1 {
+                    s.push_str(mid);
+                }
+            }
+            s.push_str(right);
+            Line::from(Span::styled(s, TABLE_BORDER_STYLE))
+        };
+
+        // Top border: ┌───┬───┐
+        self.lines.push(build_border("┌", "┬", "┐", "─"));
+
+        for (row_idx, row) in rows.iter().enumerate() {
+            // Content line: │ cell │ cell │
+            let mut spans: Vec<Span<'static>> = Vec::new();
+            spans.push(Span::styled("│ ", TABLE_BORDER_STYLE));
+
+            for (col_idx, col_width) in col_widths.iter().enumerate() {
+                let cell = row.get(col_idx);
+                let cell_spans: &[Span] = match cell {
+                    Some(c) => c,
+                    None => &[],
+                };
+                let content_width: usize = cell_spans.iter().map(|s| s.content.chars().count()).sum();
+                let padding = col_width.saturating_sub(content_width);
+
+                spans.extend(cell_spans.iter().cloned());
+                spans.push(Span::styled(
+                    format!("{} │ ", " ".repeat(padding)),
+                    TABLE_BORDER_STYLE,
+                ));
+            }
+
+            self.lines.push(Line::from(spans));
+
+            // After the first row (header), add separator: ├───┼───┤
+            if row_idx == 0 && rows.len() > 1 {
+                self.lines.push(build_border("├", "┼", "┤", "─"));
+            }
+        }
+
+        // Bottom border: └───┴───┘
+        self.lines.push(build_border("└", "┴", "┘", "─"));
     }
 
     fn highlight_code(&self, code: &str, lang: &str) -> Vec<Vec<Span<'static>>> {
@@ -979,4 +1126,63 @@ mod tests {
         }
     }
 
+    // ── Table rendering tests ──────────────────────────────────────────
+
+    #[test]
+    fn table_renders_with_borders() {
+        let input = "| Key | Action |\n|---|---|\n| j/k | Navigate |\n| Enter | Open file |\n";
+        let text = render_markdown(input);
+        let content = text_content(&text);
+        let joined = content.join("\n");
+        assert!(joined.contains('┌'), "Missing table top border");
+        assert!(joined.contains('┘'), "Missing table bottom border");
+        assert!(joined.contains('│'), "Missing table cell border");
+        assert!(joined.contains("Key"), "Header content missing");
+        assert!(joined.contains("Navigate"), "Cell content missing");
+    }
+
+    #[test]
+    fn table_header_is_bold() {
+        let input = "| Name | Value |\n|---|---|\n| a | b |\n";
+        let text = render_markdown(input);
+        // Find the line containing "Name" and check it has bold
+        for line in &text.lines {
+            for span in &line.spans {
+                if span.content.contains("Name") {
+                    assert!(
+                        span.style.add_modifier.contains(Modifier::BOLD),
+                        "Header should be bold"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn table_empty_does_not_panic() {
+        let input = "| |\n|---|\n| |\n";
+        let text = render_markdown(input);
+        let _ = text; // Must not panic
+    }
+
+    #[test]
+    fn table_with_inline_code() {
+        let input = "| Command | Description |\n|---|---|\n| `ls` | List files |\n";
+        let text = render_markdown(input);
+        let content = text_content(&text);
+        let joined = content.join("\n");
+        assert!(joined.contains("ls"), "Inline code content missing in table");
+        assert!(joined.contains("List files"), "Cell content missing");
+    }
+
+    #[test]
+    fn table_separator_between_header_and_body() {
+        let input = "| A | B |\n|---|---|\n| 1 | 2 |\n";
+        let text = render_markdown(input);
+        let content = text_content(&text);
+        let joined = content.join("\n");
+        assert!(joined.contains('├'), "Missing header separator left");
+        assert!(joined.contains('┼'), "Missing header separator cross");
+        assert!(joined.contains('┤'), "Missing header separator right");
+    }
 }
