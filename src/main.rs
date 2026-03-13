@@ -22,7 +22,21 @@ fn main() -> anyhow::Result<()> {
     // CLI args: `mdt [path]` defaulting to current directory.
     let path = std::env::args().nth(1).map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."));
 
-    let mut app = App::new(path)?;
+    // Detect terminal background color for solid fill (prevents transparency).
+    // Must be called before enable_raw_mode() since the crate manages its own raw mode.
+    let bg_color = {
+        use terminal_colorsaurus::{background_color, QueryOptions};
+        match background_color(QueryOptions::default()) {
+            Ok(bg) => ratatui::style::Color::Rgb(
+                (bg.r >> 8) as u8,
+                (bg.g >> 8) as u8,
+                (bg.b >> 8) as u8,
+            ),
+            Err(_) => ratatui::style::Color::Rgb(0, 0, 0),
+        }
+    };
+
+    let mut app = App::new(path, bg_color)?;
 
     // --- Terminal setup ---
     enable_raw_mode()?;

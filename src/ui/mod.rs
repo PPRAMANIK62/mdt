@@ -13,6 +13,12 @@ use crate::app::{App, Focus};
 
 /// Draw the full UI: file list | preview, plus status bar.
 pub fn draw(frame: &mut Frame, app: &mut App) {
+    // Fill entire frame with solid terminal background color to prevent transparency.
+    frame.render_widget(
+        Block::default().style(Style::default().bg(app.bg_color)),
+        frame.area(),
+    );
+
     let outer = Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).split(frame.area());
 
     let main_area = outer[0];
@@ -40,7 +46,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 
     // --- Help overlay (rendered last so it's on top) ---
     if app.show_help {
-        draw_help_overlay(frame, frame.area());
+        draw_help_overlay(frame, frame.area(), app.bg_color);
     }
 }
 
@@ -90,11 +96,15 @@ fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {
 }
 
 /// Draw the help overlay popup.
-fn draw_help_overlay(frame: &mut Frame, area: Rect) {
+fn draw_help_overlay(frame: &mut Frame, area: Rect, bg_color: Color) {
     let popup_area = centered_rect(40, 20, area);
 
     // Clear the area behind the popup.
     frame.render_widget(Clear, popup_area);
+    frame.render_widget(
+        Block::default().style(Style::default().bg(bg_color)),
+        popup_area,
+    );
 
     let help_text = Text::from(vec![
         Line::from(""),
@@ -123,7 +133,8 @@ fn draw_help_overlay(frame: &mut Frame, area: Rect) {
         Block::default()
             .title(" Help ")
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::White)),
+            .border_style(Style::default().fg(Color::White))
+            .style(Style::default().bg(bg_color)),
     );
 
     frame.render_widget(popup, popup_area);

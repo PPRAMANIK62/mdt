@@ -12,6 +12,7 @@ tui-tree-widget = "0.24"
 ratatui-textarea = "0.8"
 unicode-width = "0.2"
 anyhow = "1"
+terminal-colorsaurus = "1"
 
 [lints.clippy]
 pedantic = { level = "warn", priority = -1 }

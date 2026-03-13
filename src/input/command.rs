@@ -83,6 +83,7 @@ mod tests {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
     use crate::app::{App, AppMode};
+    use ratatui::style::Color;
 
     #[test]
     fn execute_quit_sets_should_quit() {
@@ -91,7 +92,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("test.md"), "# Test").unwrap();
 
-        let mut app = App::new(dir.clone()).unwrap();
+        let mut app = App::new(dir.clone(), Color::Reset).unwrap();
         assert!(!app.should_quit);
 
         app.execute_command("q");
@@ -108,7 +109,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("test.md"), "# Test").unwrap();
 
-        let mut app = App::new(dir.clone()).unwrap();
+        let mut app = App::new(dir.clone(), Color::Reset).unwrap();
         app.mode = AppMode::Command;
         app.command_buffer = "some".to_string();
 

@@ -235,6 +235,7 @@ mod tests {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
     use crate::app::{App, AppMode, Focus};
+    use ratatui::style::Color;
 
     #[test]
     fn j_key_in_file_list_dispatches_tree_navigation() {
@@ -244,7 +245,7 @@ mod tests {
         std::fs::write(dir.join("a.md"), "# A").unwrap();
         std::fs::write(dir.join("b.md"), "# B").unwrap();
 
-        let mut app = App::new(dir.clone()).unwrap();
+        let mut app = App::new(dir.clone(), Color::Reset).unwrap();
         assert_eq!(app.focus, Focus::FileList);
         assert_eq!(app.mode, AppMode::Normal);
 
@@ -265,7 +266,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("test.md"), "# Test").unwrap();
 
-        let mut app = App::new(dir.clone()).unwrap();
+        let mut app = App::new(dir.clone(), Color::Reset).unwrap();
         assert_eq!(app.mode, AppMode::Normal);
 
         let key = KeyEvent::new(KeyCode::Char(':'), KeyModifiers::NONE);

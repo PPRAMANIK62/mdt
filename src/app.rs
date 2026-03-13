@@ -64,11 +64,12 @@ pub struct App {
     pub(crate) filtered_path_map: Option<HashMap<String, (PathBuf, bool)>>,
     pub(crate) show_help: bool,
     pub(crate) show_file_tree: bool,
+    pub(crate) bg_color: ratatui::style::Color,
 }
 
 impl App {
     /// Create a new `App` rooted at `path`.
-    pub fn new(path: PathBuf) -> anyhow::Result<Self> {
+    pub fn new(path: PathBuf, bg_color: ratatui::style::Color) -> anyhow::Result<Self> {
         let (tree_items, path_map) = file_tree::build_tree_items(&path)?;
         let tree_state = TreeState::default();
         Ok(Self {
@@ -96,6 +97,7 @@ impl App {
             filtered_path_map: None,
             show_help: false,
             show_file_tree: true,
+            bg_color,
         })
     }
 
@@ -136,6 +138,7 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ratatui::style::Color;
 
     // ── App::new ─────────────────────────────────────────────────────
 
@@ -146,7 +149,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("test.md"), "# Test").unwrap();
 
-        let app = App::new(dir.clone()).unwrap();
+        let app = App::new(dir.clone(), Color::Reset).unwrap();
         assert!(!app.tree_items.is_empty());
         assert!(!app.path_map.is_empty());
         assert_eq!(app.mode, AppMode::Normal);
@@ -163,7 +166,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
 
-        let app = App::new(dir.clone()).unwrap();
+        let app = App::new(dir.clone(), Color::Reset).unwrap();
         assert!(app.tree_items.is_empty());
         assert!(app.path_map.is_empty());
 
@@ -178,7 +181,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
 
-        let mut app = App::new(dir.clone()).unwrap();
+        let mut app = App::new(dir.clone(), Color::Reset).unwrap();
         app.search_active = true;
         app.search_query = "test".to_string();
         app.search_matches = vec![1, 5, 10];
@@ -217,7 +220,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
 
-        let mut app = App::new(dir.clone()).unwrap();
+        let mut app = App::new(dir.clone(), Color::Reset).unwrap();
         assert_eq!(app.mode, AppMode::Normal);
 
         // ':' enters Command mode.
@@ -237,7 +240,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
 
-        let mut app = App::new(dir.clone()).unwrap();
+        let mut app = App::new(dir.clone(), Color::Reset).unwrap();
         assert_eq!(app.mode, AppMode::Normal);
 
         // '/' enters Search mode and activates search.
@@ -259,7 +262,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
 
-        let mut app = App::new(dir.clone()).unwrap();
+        let mut app = App::new(dir.clone(), Color::Reset).unwrap();
         assert!(!app.show_help);
 
         // '?' toggles help on.
@@ -279,7 +282,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
 
-        let mut app = App::new(dir.clone()).unwrap();
+        let mut app = App::new(dir.clone(), Color::Reset).unwrap();
         assert_eq!(app.focus, Focus::FileList);
 
         // Tab switches to Preview.
@@ -301,7 +304,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
 
-        let mut app = App::new(dir.clone()).unwrap();
+        let mut app = App::new(dir.clone(), Color::Reset).unwrap();
 
         // Enter Command mode first.
         app.handle_event(key_event(KeyCode::Char(':')));

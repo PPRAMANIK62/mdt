@@ -161,6 +161,7 @@ mod tests {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
     use crate::app::{App, AppMode};
+    use ratatui::style::Color;
 
     #[test]
     fn esc_in_search_clears_and_returns_to_normal() {
@@ -169,7 +170,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("test.md"), "# Test").unwrap();
 
-        let mut app = App::new(dir.clone()).unwrap();
+        let mut app = App::new(dir.clone(), Color::Reset).unwrap();
         app.mode = AppMode::Search;
         app.search_active = true;
         app.search_query = "hello".to_string();
@@ -191,7 +192,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("test.md"), "# Test").unwrap();
 
-        let mut app = App::new(dir.clone()).unwrap();
+        let mut app = App::new(dir.clone(), Color::Reset).unwrap();
         app.mode = AppMode::Search;
 
         app.handle_search_key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE));

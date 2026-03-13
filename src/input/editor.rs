@@ -128,6 +128,7 @@ mod tests {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
     use crate::app::{App, AppMode};
+    use ratatui::style::Color;
 
     #[test]
     fn esc_in_insert_mode_returns_to_normal() {
@@ -136,7 +137,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("test.md"), "# Test").unwrap();
 
-        let mut app = App::new(dir.clone()).unwrap();
+        let mut app = App::new(dir.clone(), Color::Reset).unwrap();
         app.mode = AppMode::Insert;
 
         let key = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
@@ -155,7 +156,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("test.md"), "# Test").unwrap();
 
-        let mut app = App::new(dir.clone()).unwrap();
+        let mut app = App::new(dir.clone(), Color::Reset).unwrap();
         app.open_file(&dir.join("test.md"));
         app.enter_editor();
 
