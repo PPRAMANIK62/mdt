@@ -68,17 +68,18 @@ fn wrap_spans(spans: &[Span], max_width: usize) -> Vec<Vec<Span<'static>>> {
     }
 
     // Collect all graphemes with their style and display width.
-    struct Grapheme {
-        text: String,
+    struct Grapheme<'a> {
+        text: &'a str,
         style: Style,
         width: usize,
     }
 
-    let mut graphemes: Vec<Grapheme> = Vec::new();
+    let estimated_len: usize = spans.iter().map(|s| s.content.len()).sum();
+    let mut graphemes: Vec<Grapheme<'_>> = Vec::with_capacity(estimated_len);
     for span in spans {
         for g in span.content.graphemes(true) {
             graphemes.push(Grapheme {
-                text: g.to_string(),
+                text: g,
                 style: span.style,
                 width: UnicodeWidthStr::width(g),
             });
@@ -88,13 +89,13 @@ fn wrap_spans(spans: &[Span], max_width: usize) -> Vec<Vec<Span<'static>>> {
     // Split graphemes into words (whitespace-delimited chunks).
     // Each word is a run of non-whitespace graphemes, and whitespace is kept as
     // separate single-grapheme "words" so we can decide whether to emit or trim them.
-    struct Word {
-        graphemes: Vec<Grapheme>,
+    struct Word<'a> {
+        graphemes: Vec<Grapheme<'a>>,
         width: usize,
         is_whitespace: bool,
     }
 
-    let mut words: Vec<Word> = Vec::new();
+    let mut words: Vec<Word<'_>> = Vec::with_capacity(estimated_len / 4 + 1);
     let mut i = 0;
     while i < graphemes.len() {
         let is_ws = graphemes[i].text.chars().all(char::is_whitespace);
@@ -107,7 +108,7 @@ fn wrap_spans(spans: &[Span], max_width: usize) -> Vec<Vec<Span<'static>>> {
             });
             // Move the grapheme out efficiently.
             let g = std::mem::replace(&mut graphemes[i], Grapheme {
-                text: String::new(),
+                text: "",
                 style: Style::default(),
                 width: 0,
             });
@@ -119,7 +120,7 @@ fn wrap_spans(spans: &[Span], max_width: usize) -> Vec<Vec<Span<'static>>> {
             let mut w = 0;
             while i < graphemes.len() && !graphemes[i].text.chars().all(char::is_whitespace) {
                 let g = std::mem::replace(&mut graphemes[i], Grapheme {
-                    text: String::new(),
+                    text: "",
                     style: Style::default(),
                     width: 0,
                 });
@@ -143,7 +144,7 @@ fn wrap_spans(spans: &[Span], max_width: usize) -> Vec<Vec<Span<'static>>> {
     // Helper: push graphemes into cur_spans, merging consecutive same-style runs.
     fn push_graphemes(
         cur_spans: &mut Vec<Span<'static>>,
-        gs: &[Grapheme],
+        gs: &[Grapheme<'_>],
     ) {
         for g in gs {
             if let Some(last) = cur_spans.last_mut() {
@@ -155,7 +156,7 @@ fn wrap_spans(spans: &[Span], max_width: usize) -> Vec<Vec<Span<'static>>> {
                     continue;
                 }
             }
-            cur_spans.push(Span::styled(g.text.clone(), g.style));
+            cur_spans.push(Span::styled(g.text.to_owned(), g.style));
         }
     }
 
