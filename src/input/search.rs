@@ -204,4 +204,82 @@ mod tests {
 
         assert_eq!(app.search.query, "ab");
     }
+
+    #[test]
+    fn perform_document_search_finds_matches() {
+        let dir = TempTestDir::new("mdt-test-search-finds");
+        dir.create_file("test.md", "hello world\n\ngoodbye\n\nhello again");
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        app.open_file(&dir.path().join("test.md"));
+        app.document.viewport_height = 20;
+        app.search.query = "hello".to_string();
+
+        app.perform_document_search();
+
+        assert_eq!(app.search.matches.len(), 2);
+        for &idx in &app.search.matches {
+            assert!(idx < app.document.rendered_lines.len());
+        }
+    }
+
+    #[test]
+    fn perform_document_search_no_matches() {
+        let dir = TempTestDir::new("mdt-test-search-none");
+        dir.create_file("test.md", "hello world\n\ngoodbye");
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        app.open_file(&dir.path().join("test.md"));
+        app.document.viewport_height = 20;
+        app.search.query = "zzzznotfound".to_string();
+
+        app.perform_document_search();
+
+        assert!(app.search.matches.is_empty());
+        assert!(app.status_message.to_lowercase().contains("not found"));
+    }
+
+    #[test]
+    fn next_search_match_wraps_around() {
+        let dir = TempTestDir::new("mdt-test-search-next-wrap");
+        dir.create_file("test.md", "hello world\n\ngoodbye\n\nhello again");
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        app.open_file(&dir.path().join("test.md"));
+        app.document.viewport_height = 20;
+        app.search.query = "hello".to_string();
+        app.perform_document_search();
+
+        let match_count = app.search.matches.len();
+        assert!(match_count >= 2);
+
+        // Advance to last match.
+        app.search.current = match_count - 1;
+
+        // Next should wrap to 0.
+        app.next_search_match();
+        assert_eq!(app.search.current, 0);
+    }
+
+    #[test]
+    fn prev_search_match_wraps_around() {
+        let dir = TempTestDir::new("mdt-test-search-prev-wrap");
+        dir.create_file("test.md", "hello world\n\ngoodbye\n\nhello again");
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        app.open_file(&dir.path().join("test.md"));
+        app.document.viewport_height = 20;
+        app.search.query = "hello".to_string();
+        app.perform_document_search();
+
+        let match_count = app.search.matches.len();
+        assert!(match_count >= 2);
+
+        // Start at first match.
+        app.search.current = 0;
+
+        // Prev should wrap to last.
+        app.prev_search_match();
+        assert_eq!(app.search.current, match_count - 1);
+    }
 }

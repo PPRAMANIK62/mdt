@@ -308,4 +308,69 @@ mod tests {
         assert!(app.status_message.is_empty());
         assert_eq!(app.document.current_file, Some(md_path));
     }
+
+    #[test]
+    fn scroll_down_increments_offset() {
+        let dir = TempTestDir::new("mdt-test-scroll-down");
+        let content = (0..30).map(|i| format!("line {i}")).collect::<Vec<_>>().join("\n\n");
+        dir.create_file("long.md", &content);
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        app.open_file(&dir.path().join("long.md"));
+        app.document.viewport_height = 10;
+        assert_eq!(app.document.scroll_offset, 0);
+
+        app.scroll_down();
+
+        assert_eq!(app.document.scroll_offset, 1);
+    }
+
+    #[test]
+    fn scroll_half_page_down_moves_half_viewport() {
+        let dir = TempTestDir::new("mdt-test-scroll-half-down");
+        let content = (0..50).map(|i| format!("line {i}")).collect::<Vec<_>>().join("\n\n");
+        dir.create_file("long.md", &content);
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        app.open_file(&dir.path().join("long.md"));
+        app.document.viewport_height = 20;
+
+        app.scroll_half_page_down();
+
+        assert_eq!(app.document.scroll_offset, 10);
+    }
+
+    #[test]
+    fn scroll_to_top_resets_to_zero() {
+        let dir = TempTestDir::new("mdt-test-scroll-top");
+        let content = (0..30).map(|i| format!("line {i}")).collect::<Vec<_>>().join("\n\n");
+        dir.create_file("long.md", &content);
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        app.open_file(&dir.path().join("long.md"));
+        app.document.viewport_height = 10;
+        app.document.scroll_offset = 15;
+
+        app.scroll_to_top();
+
+        assert_eq!(app.document.scroll_offset, 0);
+    }
+
+    #[test]
+    fn scroll_to_bottom_sets_max_scroll() {
+        let dir = TempTestDir::new("mdt-test-scroll-bottom");
+        let content = (0..50).map(|i| format!("line {i}")).collect::<Vec<_>>().join("\n\n");
+        dir.create_file("long.md", &content);
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        app.open_file(&dir.path().join("long.md"));
+        app.document.viewport_height = 10;
+
+        app.scroll_to_bottom();
+
+        let expected = app.document.rendered_lines.len().saturating_sub(10);
+        assert_eq!(app.document.scroll_offset, expected);
+        assert!(app.document.scroll_offset > 0);
+    }
 }
+
