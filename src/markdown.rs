@@ -408,9 +408,10 @@ struct Renderer {
     /// Current link destination (Some while inside a link).
     link_dest: Option<String>,
     /// Available terminal width for wrapping (None = no wrapping).
-    #[allow(dead_code)] // Will be used by width-aware render path
     available_width: Option<usize>,
     /// Whether we're inside a heading (to apply heading style to all text).
+    /// Width of the current list marker (indent + bullet/number) for hanging indent.
+    list_marker_width: usize,
     in_heading: bool,
     /// Whether we're inside a table.
     in_table: bool,
@@ -445,6 +446,7 @@ impl Renderer {
             table_rows: Vec::new(),
             table_cell_spans: Vec::new(),
             in_table_header: false,
+            list_marker_width: 0,
         }
     }
 
@@ -611,6 +613,7 @@ impl Renderer {
             TagEnd::Item => {
                 self.flush_line();
                 self.pending_list_marker = false;
+                self.list_marker_width = 0;
             }
             TagEnd::Link => {
                 self.style_stack.pop();
@@ -979,6 +982,12 @@ impl Renderer {
                 }
             }
         }
+        // Store the marker width for hanging indent on wrapped continuation lines.
+        self.list_marker_width = self
+            .current_spans
+            .iter()
+            .map(|s| UnicodeWidthStr::width(s.content.as_ref()))
+            .sum();
     }
 
     fn list_indent_prefix(&self) -> String {
@@ -1013,16 +1022,44 @@ impl Renderer {
         }
         let spans = std::mem::take(&mut self.current_spans);
 
-        // Prepend blockquote indicators if inside a blockquote.
-        if self.blockquote_depth > 0 {
-            let mut final_spans = Vec::new();
-            for _ in 0..self.blockquote_depth {
-                final_spans.push(Span::styled("▎ ", BLOCKQUOTE_STYLE));
+        if let Some(width) = self.available_width {
+            // Calculate effective width accounting for blockquote bars.
+            let bq_prefix_width = self.blockquote_depth * 2; // each "▎ " is 2 cols
+            let effective_width = width.saturating_sub(bq_prefix_width);
+            let wrapped_lines = wrap_spans(&spans, effective_width);
+            let list_marker_width = self.list_marker_width;
+
+            for (i, line_spans) in wrapped_lines.into_iter().enumerate() {
+                let mut final_spans = Vec::new();
+
+                // Prepend blockquote bars on every wrapped line.
+                for _ in 0..self.blockquote_depth {
+                    final_spans.push(Span::styled("▎ ", BLOCKQUOTE_STYLE));
+                }
+
+                // For list items, continuation lines get hanging indent.
+                if i > 0 && list_marker_width > 0 {
+                    final_spans.push(Span::styled(
+                        " ".repeat(list_marker_width),
+                        Style::default(),
+                    ));
+                }
+
+                final_spans.extend(line_spans);
+                self.lines.push(Line::from(final_spans));
             }
-            final_spans.extend(spans);
-            self.lines.push(Line::from(final_spans));
         } else {
-            self.lines.push(Line::from(spans));
+            // Original behavior: no wrapping.
+            if self.blockquote_depth > 0 {
+                let mut final_spans = Vec::new();
+                for _ in 0..self.blockquote_depth {
+                    final_spans.push(Span::styled("▎ ", BLOCKQUOTE_STYLE));
+                }
+                final_spans.extend(spans);
+                self.lines.push(Line::from(final_spans));
+            } else {
+                self.lines.push(Line::from(spans));
+            }
         }
     }
 
@@ -1505,5 +1542,129 @@ mod tests {
     fn wrap_spans_zero_width_empty() {
         let result = wrap_spans(&[], 0);
         assert_eq!(result, vec![vec![] as Vec<Span<'static>>]);
+    }
+
+    // ── Width-aware wrapping tests ──────────────────────────────────────
+
+    #[test]
+    fn paragraph_wraps_to_width() {
+        let input = "This is a paragraph with enough words to require wrapping at a narrow width.";
+        let text = render_at_width(input, 30);
+        let content = text_content(&text);
+        // Should produce multiple lines.
+        assert!(content.len() > 1, "Expected wrapping, got: {content:?}");
+        // Every line should fit within the specified width.
+        assert!(
+            max_line_width(&text) <= 30,
+            "Line exceeded width 30: {content:?}",
+        );
+    }
+
+    #[test]
+    fn heading_wraps_with_style() {
+        let input = "# A very long heading that should definitely wrap at a narrow width";
+        let text = render_at_width(input, 20);
+        let content = text_content(&text);
+        // Should produce multiple lines.
+        assert!(content.len() > 1, "Expected heading to wrap, got: {content:?}");
+        // All lines containing text should have bold modifier (heading style).
+        for line in &text.lines {
+            for span in &line.spans {
+                if !span.content.trim().is_empty() {
+                    assert!(
+                        span.style.add_modifier.contains(Modifier::BOLD),
+                        "Heading style missing on wrapped line span: {:?}",
+                        span.content,
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn blockquote_bars_on_all_wrapped_lines() {
+        let input = "> This is a blockquote with enough text to wrap to multiple lines easily.";
+        let text = render_at_width(input, 25);
+        let content = text_content(&text);
+        assert!(content.len() > 1, "Expected wrapping, got: {content:?}");
+        // Every line must start with the blockquote bar.
+        for (i, line) in content.iter().enumerate() {
+            assert!(
+                line.starts_with("\u{258e} "),
+                "Line {i} missing blockquote bar: {line:?}",
+            );
+        }
+    }
+
+    #[test]
+    fn nested_blockquote_bars_on_wrapped() {
+        let input = "> > This is a nested blockquote that should wrap with double bars on every line.";
+        let text = render_at_width(input, 25);
+        let content = text_content(&text);
+        assert!(content.len() > 1, "Expected wrapping, got: {content:?}");
+        // Every line must start with double blockquote bars.
+        for (i, line) in content.iter().enumerate() {
+            assert!(
+                line.starts_with("\u{258e} \u{258e} "),
+                "Line {i} missing nested blockquote bars: {line:?}",
+            );
+        }
+    }
+
+    #[test]
+    fn list_hanging_indent() {
+        let input = "- This is a long list item that should wrap with a hanging indent on continuation lines.";
+        let text = render_at_width(input, 25);
+        let content = text_content(&text);
+        assert!(content.len() > 1, "Expected wrapping, got: {content:?}");
+        // First line should have the bullet marker.
+        assert!(
+            content[0].contains('\u{2022}'),
+            "First line missing bullet: {:?}",
+            content[0],
+        );
+        // Continuation lines should start with whitespace (hanging indent), not bullet.
+        for (i, line) in content.iter().enumerate().skip(1) {
+            assert!(
+                !line.contains('\u{2022}'),
+                "Continuation line {i} should not have bullet: {line:?}",
+            );
+            // The hanging indent: continuation starts with spaces matching marker width.
+            let trimmed = line.trim_start();
+            assert!(
+                line.len() > trimmed.len(),
+                "Continuation line {i} missing hanging indent: {line:?}",
+            );
+        }
+    }
+
+    #[test]
+    fn ordered_list_hanging_indent() {
+        // pulldown-cmark normalizes numbers, so "10." in markdown becomes "2." as second item.
+        let input = "1. First item text that should wrap around\n2. Second item text here";
+        let text = render_at_width(input, 20);
+        let content = text_content(&text);
+        // Find lines with ordered markers.
+        let has_one = content.iter().any(|l| l.contains("1. "));
+        let has_two = content.iter().any(|l| l.contains("2. "));
+        assert!(has_one, "Missing '1.' marker in: {content:?}");
+        assert!(has_two, "Missing '2.' marker in: {content:?}");
+        // All lines fit within width.
+        assert!(
+            max_line_width(&text) <= 20,
+            "Line exceeded width 20: {content:?}",
+        );
+        // Continuation lines of the first item should have hanging indent.
+        // First item starts with "1. ", continuation lines should start with spaces.
+        let first_item_lines: Vec<_> = content.iter().take_while(|l| !l.contains("2. ")).collect();
+        if first_item_lines.len() > 1 {
+            for cont_line in &first_item_lines[1..] {
+                let trimmed = cont_line.trim_start();
+                assert!(
+                    cont_line.len() > trimmed.len(),
+                    "Continuation line missing hanging indent: {cont_line:?}",
+                );
+            }
+        }
     }
 }
