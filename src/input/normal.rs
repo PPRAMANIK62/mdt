@@ -6,24 +6,27 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use crate::app::{App, AppMode, Focus};
 use crate::markdown::render_markdown;
 
+/// Timeout in milliseconds for composed key sequences (e.g., `gg`, `Space+e`).
+const DOUBLE_KEY_TIMEOUT_MS: u128 = 500;
+
 impl App {
     /// Handle key events in Normal mode.
     pub(crate) fn handle_normal_key(&mut self, key: KeyEvent) {
         // If we're in editor view (textarea is Some), handle editor normal-mode keys.
-        if self.textarea.is_some() {
+        if self.editor.textarea.is_some() {
             self.handle_editor_normal_key(key);
             return;
         }
 
         // Check for composed commands (e.g., gg) — works in both FileList and Preview.
         if let Some((pending_char, instant)) = self.pending_key.take() {
-            if instant.elapsed().as_millis() < 500 {
+            if instant.elapsed().as_millis() < DOUBLE_KEY_TIMEOUT_MS {
                 match (pending_char, key.code) {
                     ('g', KeyCode::Char('g')) => {
                         match self.focus {
                             Focus::Preview => self.scroll_to_top(),
                             Focus::FileList => {
-                                self.tree_state.select_first();
+                                self.tree.tree_state.select_first();
                             }
                         }
                         return;
@@ -42,13 +45,13 @@ impl App {
             // --- Navigation (focus-dependent) ---
             KeyCode::Char('j') | KeyCode::Down => match self.focus {
                 Focus::FileList => {
-                    self.tree_state.key_down();
+                    self.tree.tree_state.key_down();
                 }
                 Focus::Preview => self.scroll_down(),
             },
             KeyCode::Char('k') | KeyCode::Up => match self.focus {
                 Focus::FileList => {
-                    self.tree_state.key_up();
+                    self.tree.tree_state.key_up();
                 }
                 Focus::Preview => self.scroll_up(),
             },
@@ -58,19 +61,19 @@ impl App {
             // --- FileList-only navigation ---
             KeyCode::Char('h') | KeyCode::Left | KeyCode::Backspace => {
                 if self.focus == Focus::FileList {
-                    self.tree_state.key_left();
+                    self.tree.tree_state.key_left();
                 }
             }
             KeyCode::Char('l') | KeyCode::Right => {
                 if self.focus == Focus::FileList {
-                    self.tree_state.key_right();
+                    self.tree.tree_state.key_right();
                 }
             }
 
             // --- G: last item (FileList) or scroll bottom (Preview) ---
             KeyCode::Char('G') => match self.focus {
                 Focus::FileList => {
-                    self.tree_state.select_last();
+                    self.tree.tree_state.select_last();
                 }
                 Focus::Preview => self.scroll_to_bottom(),
             },
@@ -103,10 +106,10 @@ impl App {
                 self.command_buffer.clear();
             }
             KeyCode::Char('/') => {
-                self.search_active = true;
-                self.search_query.clear();
-                self.search_matches.clear();
-                self.search_current = 0;
+                self.search.active = true;
+                self.search.query.clear();
+                self.search.matches.clear();
+                self.search.current = 0;
                 self.mode = AppMode::Search;
             }
             KeyCode::Char('n') => self.next_search_match(),
@@ -124,7 +127,7 @@ impl App {
             // --- Quit ---
             // --- Help ---
             KeyCode::Char('?') => {
-                if self.textarea.is_none() {
+                if self.editor.textarea.is_none() {
                     self.show_help = !self.show_help;
                 }
             }
@@ -140,14 +143,14 @@ impl App {
         if self.focus != Focus::FileList {
             return;
         }
-        let selected = self.tree_state.selected().to_vec();
+        let selected = self.tree.tree_state.selected().to_vec();
         let Some(id) = selected.last() else {
             return;
         };
-        let info = self.path_map.get(id).cloned();
+        let info = self.tree.path_map.get(id).cloned();
         if let Some((path, is_dir)) = info {
             if is_dir {
-                self.tree_state.toggle(selected);
+                self.tree.tree_state.toggle(selected);
             } else {
                 self.open_file(&path);
             }
@@ -156,13 +159,21 @@ impl App {
 
     /// Read a file, render its markdown, and store the result.
     pub(crate) fn open_file(&mut self, path: &Path) {
+        const MAX_FILE_SIZE: u64 = 5_000_000;
+        if let Ok(metadata) = std::fs::metadata(path) {
+            if metadata.len() > MAX_FILE_SIZE {
+                self.status_message = "File too large (>5MB)".to_string();
+                return;
+            }
+        }
+
         match std::fs::read_to_string(path) {
             Ok(content) => {
                 let rendered = render_markdown(&content);
-                self.rendered_lines = rendered.lines;
-                self.file_content = content;
-                self.current_file = Some(path.to_path_buf());
-                self.scroll_offset = 0;
+                self.document.rendered_lines = rendered.lines;
+                self.document.file_content = content;
+                self.document.current_file = Some(path.to_path_buf());
+                self.document.scroll_offset = 0;
                 self.status_message =
                     path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
             }
@@ -189,43 +200,43 @@ impl App {
     }
 
     pub(crate) fn scroll_down(&mut self) {
-        if !self.rendered_lines.is_empty() {
-            self.scroll_offset = self.scroll_offset.saturating_add(1);
+        if !self.document.rendered_lines.is_empty() {
+            self.document.scroll_offset = self.document.scroll_offset.saturating_add(1);
             self.clamp_scroll();
         }
     }
 
     pub(crate) fn scroll_up(&mut self) {
-        self.scroll_offset = self.scroll_offset.saturating_sub(1);
+        self.document.scroll_offset = self.document.scroll_offset.saturating_sub(1);
     }
 
     pub(crate) fn scroll_to_top(&mut self) {
-        self.scroll_offset = 0;
+        self.document.scroll_offset = 0;
     }
 
     pub(crate) fn scroll_to_bottom(&mut self) {
-        self.scroll_offset = self.max_scroll();
+        self.document.scroll_offset = self.max_scroll();
     }
 
     pub(crate) fn scroll_half_page_down(&mut self) {
-        let half = self.viewport_height / 2;
-        self.scroll_offset = self.scroll_offset.saturating_add(half.max(1));
+        let half = self.document.viewport_height / 2;
+        self.document.scroll_offset = self.document.scroll_offset.saturating_add(half.max(1));
         self.clamp_scroll();
     }
 
     pub(crate) fn scroll_half_page_up(&mut self) {
-        let half = self.viewport_height / 2;
-        self.scroll_offset = self.scroll_offset.saturating_sub(half.max(1));
+        let half = self.document.viewport_height / 2;
+        self.document.scroll_offset = self.document.scroll_offset.saturating_sub(half.max(1));
     }
 
     pub(crate) fn max_scroll(&self) -> usize {
-        self.rendered_lines.len().saturating_sub(self.viewport_height)
+        self.document.rendered_lines.len().saturating_sub(self.document.viewport_height)
     }
 
     pub(crate) fn clamp_scroll(&mut self) {
         let max = self.max_scroll();
-        if self.scroll_offset > max {
-            self.scroll_offset = max;
+        if self.document.scroll_offset > max {
+            self.document.scroll_offset = max;
         }
     }
 }
@@ -235,17 +246,16 @@ mod tests {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
     use crate::app::{App, AppMode, Focus};
+    use crate::test_util::TempTestDir;
     use ratatui::style::Color;
 
     #[test]
     fn j_key_in_file_list_dispatches_tree_navigation() {
-        let dir = std::env::temp_dir().join("mdt-test-normal-j");
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("a.md"), "# A").unwrap();
-        std::fs::write(dir.join("b.md"), "# B").unwrap();
+        let dir = TempTestDir::new("mdt-test-normal-j");
+        dir.create_file("a.md", "# A");
+        dir.create_file("b.md", "# B");
 
-        let mut app = App::new(dir.clone(), Color::Reset).unwrap();
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
         assert_eq!(app.focus, Focus::FileList);
         assert_eq!(app.mode, AppMode::Normal);
 
@@ -255,18 +265,14 @@ mod tests {
         // Dispatch went to FileList branch — mode and focus unchanged.
         assert_eq!(app.mode, AppMode::Normal);
         assert_eq!(app.focus, Focus::FileList);
-
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn colon_key_enters_command_mode() {
-        let dir = std::env::temp_dir().join("mdt-test-normal-colon");
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("test.md"), "# Test").unwrap();
+        let dir = TempTestDir::new("mdt-test-normal-colon");
+        dir.create_file("test.md", "# Test");
 
-        let mut app = App::new(dir.clone(), Color::Reset).unwrap();
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
         assert_eq!(app.mode, AppMode::Normal);
 
         let key = KeyEvent::new(KeyCode::Char(':'), KeyModifiers::NONE);
@@ -274,7 +280,33 @@ mod tests {
 
         assert_eq!(app.mode, AppMode::Command);
         assert!(app.command_buffer.is_empty());
+    }
 
-        let _ = std::fs::remove_dir_all(&dir);
+    #[test]
+    fn open_file_rejects_large_files() {
+        let dir = TempTestDir::new("mdt-test-open-file-large");
+        // Create a file just over 5MB
+        let big_path = dir.path().join("big.md");
+        let data = vec![b'x'; 5_000_001];
+        std::fs::write(&big_path, &data).unwrap();
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        app.open_file(&big_path);
+
+        assert_eq!(app.status_message, "File too large (>5MB)");
+        assert!(app.document.current_file.is_none());
+    }
+
+    #[test]
+    fn open_file_succeeds_for_small_file() {
+        let dir = TempTestDir::new("mdt-test-open-file-small");
+        dir.create_file("hello.md", "# Hello");
+        let md_path = dir.path().join("hello.md");
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        app.open_file(&md_path);
+
+        assert_eq!(app.status_message, "hello.md");
+        assert_eq!(app.document.current_file, Some(md_path));
     }
 }

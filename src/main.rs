@@ -2,13 +2,15 @@ mod app;
 mod file_tree;
 mod input;
 mod markdown;
+#[cfg(test)]
+mod test_util;
 mod ui;
 
 use std::io;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use crossterm::event::{self, Event};
+use crossterm::event::{self, Event, KeyEventKind};
 use crossterm::execute;
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
@@ -17,6 +19,8 @@ use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
 
 use app::App;
+
+const EVENT_POLL_MS: u64 = 250;
 
 fn main() -> anyhow::Result<()> {
     // CLI args: `mdt [path]` defaulting to current directory.
@@ -27,16 +31,14 @@ fn main() -> anyhow::Result<()> {
     let bg_color = {
         use terminal_colorsaurus::{background_color, QueryOptions};
         match background_color(QueryOptions::default()) {
-            Ok(bg) => ratatui::style::Color::Rgb(
-                (bg.r >> 8) as u8,
-                (bg.g >> 8) as u8,
-                (bg.b >> 8) as u8,
-            ),
+            Ok(bg) => {
+                ratatui::style::Color::Rgb((bg.r >> 8) as u8, (bg.g >> 8) as u8, (bg.b >> 8) as u8)
+            }
             Err(_) => ratatui::style::Color::Rgb(0, 0, 0),
         }
     };
 
-    let mut app = App::new(path, bg_color)?;
+    let mut app = App::new(&path, bg_color)?;
 
     // --- Terminal setup ---
     enable_raw_mode()?;
@@ -69,11 +71,11 @@ fn run_loop(
             needs_redraw = false;
         }
 
-        if event::poll(Duration::from_millis(250))? {
+        if event::poll(Duration::from_millis(EVENT_POLL_MS))? {
             let event = event::read()?;
-            match &event {
-                Event::Key(key) if key.kind == crossterm::event::KeyEventKind::Press => {
-                    app.handle_event(event);
+            match event {
+                Event::Key(key) if key.kind == KeyEventKind::Press => {
+                    app.handle_event(key);
                     needs_redraw = true;
                 }
                 Event::Resize(_, _) => {

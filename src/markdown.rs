@@ -4,7 +4,7 @@
 //! strikethrough, inline code, code blocks, lists, blockquotes, links, horizontal rules,
 //! and task lists are all rendered as properly styled text.
 
-use pulldown_cmark::{CodeBlockKind, CowStr, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
+use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use std::sync::OnceLock;
@@ -12,6 +12,7 @@ use syntect::easy::ScopeRegionIterator;
 use syntect::parsing::SyntaxSet;
 use syntect::parsing::{ParseState, Scope, ScopeStack};
 use syntect::util::LinesWithEndings;
+use unicode_width::UnicodeWidthStr;
 
 /// Render markdown input into styled ratatui [`Text`].
 ///
@@ -112,22 +113,22 @@ struct ScopeMatchers {
 impl ScopeMatchers {
     fn new() -> Self {
         Self {
-            comment: Scope::new("comment").unwrap(),
-            string: Scope::new("string").unwrap(),
-            constant_character: Scope::new("constant.character").unwrap(),
-            constant_numeric: Scope::new("constant.numeric").unwrap(),
-            keyword_operator: Scope::new("keyword.operator").unwrap(),
-            keyword: Scope::new("keyword").unwrap(),
-            storage: Scope::new("storage").unwrap(),
-            entity_name_function: Scope::new("entity.name.function").unwrap(),
-            support_function: Scope::new("support.function").unwrap(),
-            entity_name_type: Scope::new("entity.name.type").unwrap(),
-            support_type: Scope::new("support.type").unwrap(),
-            entity_name_tag: Scope::new("entity.name.tag").unwrap(),
-            punctuation: Scope::new("punctuation").unwrap(),
-            variable: Scope::new("variable").unwrap(),
-            entity_name: Scope::new("entity.name").unwrap(),
-            constant: Scope::new("constant").unwrap(),
+            comment: Scope::new("comment").expect("valid scope literal"),
+            string: Scope::new("string").expect("valid scope literal"),
+            constant_character: Scope::new("constant.character").expect("valid scope literal"),
+            constant_numeric: Scope::new("constant.numeric").expect("valid scope literal"),
+            keyword_operator: Scope::new("keyword.operator").expect("valid scope literal"),
+            keyword: Scope::new("keyword").expect("valid scope literal"),
+            storage: Scope::new("storage").expect("valid scope literal"),
+            entity_name_function: Scope::new("entity.name.function").expect("valid scope literal"),
+            support_function: Scope::new("support.function").expect("valid scope literal"),
+            entity_name_type: Scope::new("entity.name.type").expect("valid scope literal"),
+            support_type: Scope::new("support.type").expect("valid scope literal"),
+            entity_name_tag: Scope::new("entity.name.tag").expect("valid scope literal"),
+            punctuation: Scope::new("punctuation").expect("valid scope literal"),
+            variable: Scope::new("variable").expect("valid scope literal"),
+            entity_name: Scope::new("entity.name").expect("valid scope literal"),
+            constant: Scope::new("constant").expect("valid scope literal"),
         }
     }
 }
@@ -265,14 +266,14 @@ impl Renderer {
         match event {
             Event::Start(tag) => self.start_tag(tag),
             Event::End(tag) => self.end_tag(tag),
-            Event::Text(text) => self.on_text(text),
-            Event::Code(code) => self.on_inline_code(code),
+            Event::Text(text) => self.on_text(&text),
+            Event::Code(code) => self.on_inline_code(&code),
             Event::SoftBreak => self.on_soft_break(),
             Event::HardBreak => self.on_hard_break(),
             Event::Rule => self.on_rule(),
             Event::TaskListMarker(checked) => self.on_task_list_marker(checked),
-            Event::Html(html) => self.on_html(html),
-            Event::InlineHtml(html) => self.on_inline_html(html),
+            Event::Html(html) => self.on_html(&html),
+            Event::InlineHtml(html) => self.on_inline_html(&html),
             Event::FootnoteReference(_) | Event::InlineMath(_) | Event::DisplayMath(_) => {}
         }
     }
@@ -353,7 +354,7 @@ impl Renderer {
                     self.push_blank_line();
                 }
                 self.in_table = true;
-                self.table_alignments = alignments.to_vec();
+                self.table_alignments.clone_from(&alignments);
                 self.table_rows.clear();
             }
             Tag::TableHead => {
@@ -395,7 +396,7 @@ impl Renderer {
                 self.needs_newline = true;
             }
             TagEnd::CodeBlock => {
-                self.render_code_block();
+                self.render_code_block(None);
                 self.in_code_block = false;
                 self.code_block_lang = None;
                 self.needs_newline = true;
@@ -459,9 +460,9 @@ impl Renderer {
 
     // ── Inline events ───────────────────────────────────────────────────
 
-    fn on_text<'a>(&mut self, text: CowStr<'a>) {
+    fn on_text(&mut self, text: &str) {
         if self.in_code_block {
-            self.code_block_buf.push_str(&text);
+            self.code_block_buf.push_str(text);
             return;
         }
 
@@ -490,7 +491,7 @@ impl Renderer {
         }
     }
 
-    fn on_inline_code<'a>(&mut self, code: CowStr<'a>) {
+    fn on_inline_code(&mut self, code: &str) {
         if self.pending_list_marker {
             self.emit_list_marker();
             self.pending_list_marker = false;
@@ -543,7 +544,7 @@ impl Renderer {
         self.pending_list_marker = false;
     }
 
-    fn on_html<'a>(&mut self, html: CowStr<'a>) {
+    fn on_html(&mut self, html: &str) {
         // Render HTML blocks as plain text.
         for (i, line) in html.lines().enumerate() {
             if i > 0 {
@@ -554,44 +555,60 @@ impl Renderer {
         self.flush_line();
     }
 
-    fn on_inline_html<'a>(&mut self, html: CowStr<'a>) {
+    fn on_inline_html(&mut self, html: &str) {
         // Strip inline HTML tags, render content if any.
-        let content = html.to_string();
-        if !content.is_empty() {
-            self.current_spans.push(Span::styled(content, self.current_style()));
+        if html.is_empty() {
+            return;
         }
+        let content = html.to_string();
+        self.current_spans.push(Span::styled(content, self.current_style()));
     }
 
     // ── Code block rendering ────────────────────────────────────────────
 
-    fn render_code_block(&mut self) {
+    /// Minimum display width for code block boxes.
+    const CODE_BLOCK_MIN_WIDTH: usize = 20;
+    /// Padding added to each side of code block content (left + right borders).
+    const CODE_BLOCK_BORDER_PAD: usize = 2;
+
+    fn render_code_block(&mut self, available_width: Option<usize>) {
         let code = std::mem::take(&mut self.code_block_buf);
         let lang = self.code_block_lang.clone().unwrap_or_default();
 
         // Highlight first so we can measure widths.
-        let highlighted_lines = self.highlight_code(&code, &lang);
+        let highlighted_lines = Self::highlight_code(&code, &lang);
 
         // Calculate display width of each line's spans.
         fn spans_display_width(spans: &[Span<'_>]) -> usize {
-            spans.iter().map(|s| s.content.chars().count()).sum()
+            spans.iter().map(|s| s.content.width()).sum()
         }
 
-        let max_width = highlighted_lines
+        let content_max = highlighted_lines
             .iter()
             .map(|spans| spans_display_width(spans))
             .max()
-            .unwrap_or(20)
-            .max(20);
+            .unwrap_or(Self::CODE_BLOCK_MIN_WIDTH)
+            .max(Self::CODE_BLOCK_MIN_WIDTH);
 
-        // inner = " code_padded " = max_width + 2 (one space each side)
-        let inner = max_width + 2;
+        // Clamp to available terminal width if provided.
+        let max_width = match available_width {
+            // available_width includes the border chars (│ + space on each side = 4),
+            // so inner content area = available - border_pad - 2 (for │ chars).
+            Some(aw) if aw > Self::CODE_BLOCK_BORDER_PAD + 2 => {
+                content_max.min(aw - Self::CODE_BLOCK_BORDER_PAD - 2)
+            }
+            _ => content_max,
+        };
+
+        // inner = " code_padded " = max_width + border_pad (one space each side)
+        let inner = max_width + Self::CODE_BLOCK_BORDER_PAD;
 
         // Header: ┌─ lang ─...─┐
         let header_text = if lang.is_empty() {
             format!("┌{}┐", "─".repeat(inner))
         } else {
             let label = format!("─ {} ─", lang);
-            let label_width = label.chars().count();
+            let label_width = label.width();
             let remaining = inner.saturating_sub(label_width);
             format!("┌{}{}┐", label, "─".repeat(remaining))
         };
@@ -614,6 +631,11 @@ impl Renderer {
 
     // ── Table rendering ─────────────────────────────────────────────────
 
+    /// Minimum display width for table columns.
+    const TABLE_MIN_COL_WIDTH: usize = 3;
+    /// Padding added to each side of a table cell.
+    const TABLE_CELL_PAD: usize = 2;
+
     fn render_table(&mut self) {
         // Filter out empty trailing rows
         let rows: Vec<&Vec<Vec<Span<'static>>>> =
@@ -632,20 +654,20 @@ impl Renderer {
         let mut col_widths = vec![0usize; num_cols];
         for row in &rows {
             for (i, cell) in row.iter().enumerate() {
-                let width: usize = cell.iter().map(|s| s.content.chars().count()).sum();
+                let width: usize = cell.iter().map(|s| s.content.width()).sum();
                 col_widths[i] = col_widths[i].max(width);
             }
         }
         // Minimum column width of 3
         for w in &mut col_widths {
-            *w = (*w).max(3);
+            *w = (*w).max(Self::TABLE_MIN_COL_WIDTH);
         }
 
         // Helper to build a horizontal border line
         let build_border = |left: &str, mid: &str, right: &str, fill: &str| -> Line<'static> {
             let mut s = left.to_string();
             for (i, &w) in col_widths.iter().enumerate() {
-                s.push_str(&fill.repeat(w + 2)); // +2 for padding spaces
+                s.push_str(&fill.repeat(w + Self::TABLE_CELL_PAD)); // +2 for padding spaces
                 if i < num_cols - 1 {
                     s.push_str(mid);
                 }
@@ -668,8 +690,7 @@ impl Renderer {
                     Some(c) => c,
                     None => &[],
                 };
-                let content_width: usize =
-                    cell_spans.iter().map(|s| s.content.chars().count()).sum();
+                let content_width: usize = cell_spans.iter().map(|s| s.content.width()).sum();
                 let padding = col_width.saturating_sub(content_width);
 
                 spans.extend(cell_spans.iter().cloned());
@@ -688,7 +709,7 @@ impl Renderer {
         self.lines.push(build_border("└", "┴", "┘", "─"));
     }
 
-    fn highlight_code(&self, code: &str, lang: &str) -> Vec<Vec<Span<'static>>> {
+    fn highlight_code(code: &str, lang: &str) -> Vec<Vec<Span<'static>>> {
         let ss = syntax_set();
 
         // Try to find syntax for the language.

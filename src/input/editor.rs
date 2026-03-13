@@ -17,10 +17,10 @@ impl App {
         }
 
         // Forward all other keys to the TextArea.
-        if let Some(ref mut textarea) = self.textarea {
+        if let Some(ref mut textarea) = self.editor.textarea {
             let modified = textarea.input(key);
             if modified {
-                self.is_dirty = true;
+                self.editor.is_dirty = true;
             }
         }
     }
@@ -40,7 +40,7 @@ impl App {
             }
             // Exit editor (with dirty-check warning).
             KeyCode::Esc => {
-                if self.is_dirty {
+                if self.editor.is_dirty {
                     self.status_message = "Unsaved changes! :w to save, :q! to discard".to_string();
                 } else {
                     self.exit_editor();
@@ -48,7 +48,7 @@ impl App {
             }
             // Forward navigation keys to TextArea (h/j/k/l, arrows, etc.).
             _ => {
-                if let Some(ref mut textarea) = self.textarea {
+                if let Some(ref mut textarea) = self.editor.textarea {
                     textarea.input(key);
                 }
             }
@@ -57,14 +57,15 @@ impl App {
 
     /// Enter the editor: create TextArea from current file content.
     pub(crate) fn enter_editor(&mut self) {
-        if self.current_file.is_none() {
+        if self.document.current_file.is_none() {
             self.status_message = "No file open".to_string();
             return;
         }
 
-        let mut textarea = TextArea::from(self.file_content.lines());
+        let mut textarea = TextArea::from(self.document.file_content.lines());
 
         let title = self
+            .document
             .current_file
             .as_ref()
             .and_then(|p| p.file_name())
@@ -74,41 +75,41 @@ impl App {
         textarea.set_block(Block::default().title(title).borders(Borders::ALL));
         textarea.set_line_number_style(Style::default());
 
-        self.textarea = Some(textarea);
-        self.is_dirty = false;
+        self.editor.textarea = Some(textarea);
+        self.editor.is_dirty = false;
         self.mode = AppMode::Insert;
         self.status_message = "-- INSERT --".to_string();
     }
 
     /// Exit the editor, returning to preview mode.
     pub(crate) fn exit_editor(&mut self) {
-        self.textarea = None;
-        self.is_dirty = false;
+        self.editor.textarea = None;
+        self.editor.is_dirty = false;
         self.mode = AppMode::Normal;
-        self.scroll_offset = 0;
+        self.document.scroll_offset = 0;
     }
 
     /// Save the editor content to disk, re-render markdown.
     pub(crate) fn save_editor(&mut self) -> bool {
-        let Some(ref path) = self.current_file else {
+        let Some(ref path) = self.document.current_file else {
             self.status_message = "No file path".to_string();
             return false;
         };
-        let Some(ref textarea) = self.textarea else {
+        let Some(ref textarea) = self.editor.textarea else {
             self.status_message = "Not in editor".to_string();
             return false;
         };
 
-        let content = textarea.lines().join("\n");
+        let content = textarea.lines().join("\n") + "\n";
         let path = path.clone();
 
         match std::fs::write(&path, &content) {
             Ok(()) => {
                 // Update stored content and re-render markdown preview.
-                self.file_content = content;
-                let rendered = render_markdown(&self.file_content);
-                self.rendered_lines = rendered.lines;
-                self.is_dirty = false;
+                self.document.file_content = content;
+                let rendered = render_markdown(&self.document.file_content);
+                self.document.rendered_lines = rendered.lines;
+                self.editor.is_dirty = false;
 
                 let name =
                     path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
@@ -128,16 +129,15 @@ mod tests {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
     use crate::app::{App, AppMode};
+    use crate::test_util::TempTestDir;
     use ratatui::style::Color;
 
     #[test]
     fn esc_in_insert_mode_returns_to_normal() {
-        let dir = std::env::temp_dir().join("mdt-test-editor-esc");
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("test.md"), "# Test").unwrap();
+        let dir = TempTestDir::new("mdt-test-editor-esc");
+        dir.create_file("test.md", "# Test");
 
-        let mut app = App::new(dir.clone(), Color::Reset).unwrap();
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
         app.mode = AppMode::Insert;
 
         let key = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
@@ -145,19 +145,15 @@ mod tests {
 
         assert_eq!(app.mode, AppMode::Normal);
         assert!(app.status_message.is_empty());
-
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn i_key_in_editor_normal_enters_insert() {
-        let dir = std::env::temp_dir().join("mdt-test-editor-i");
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("test.md"), "# Test").unwrap();
+        let dir = TempTestDir::new("mdt-test-editor-i");
+        dir.create_file("test.md", "# Test");
 
-        let mut app = App::new(dir.clone(), Color::Reset).unwrap();
-        app.open_file(&dir.join("test.md"));
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        app.open_file(&dir.path().join("test.md"));
         app.enter_editor();
 
         // enter_editor sets Insert mode; switch to Normal for this test.
@@ -168,7 +164,40 @@ mod tests {
 
         assert_eq!(app.mode, AppMode::Insert);
         assert_eq!(app.status_message, "-- INSERT --");
+    }
 
-        let _ = std::fs::remove_dir_all(&dir);
+    #[test]
+    fn save_editor_appends_trailing_newline() {
+        let dir = TempTestDir::new("mdt-test-editor-trailing-nl");
+        dir.create_file("test.md", "# Hello\nWorld");
+        let file = dir.path().join("test.md");
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        app.open_file(&file);
+        app.enter_editor();
+
+        let saved = app.save_editor();
+        assert!(saved);
+
+        let on_disk = std::fs::read_to_string(&file).unwrap();
+        assert!(on_disk.ends_with('\n'), "saved file must end with newline");
+        assert!(!on_disk.ends_with("\n\n"), "must not have double trailing newline");
+    }
+
+    #[test]
+    fn save_editor_empty_content_is_single_newline() {
+        let dir = TempTestDir::new("mdt-test-editor-empty-nl");
+        dir.create_file("test.md", "");
+        let file = dir.path().join("test.md");
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        app.open_file(&file);
+        app.enter_editor();
+
+        let saved = app.save_editor();
+        assert!(saved);
+
+        let on_disk = std::fs::read_to_string(&file).unwrap();
+        assert_eq!(on_disk, "\n", "empty editor should save as single newline");
     }
 }

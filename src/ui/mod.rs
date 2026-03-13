@@ -14,10 +14,7 @@ use crate::app::{App, Focus};
 /// Draw the full UI: file list | preview, plus status bar.
 pub fn draw(frame: &mut Frame, app: &mut App) {
     // Fill entire frame with solid terminal background color to prevent transparency.
-    frame.render_widget(
-        Block::default().style(Style::default().bg(app.bg_color)),
-        frame.area(),
-    );
+    frame.render_widget(Block::default().style(Style::default().bg(app.bg_color)), frame.area());
 
     let outer = Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).split(frame.area());
 
@@ -30,12 +27,12 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
                 .split(main_area);
         draw_file_list(frame, app, main_chunks[0]);
         let content_area = main_chunks[1];
-        if let Some(ref textarea) = app.textarea {
+        if let Some(ref textarea) = app.editor.textarea {
             editor::draw_editor(frame, textarea, content_area);
         } else {
             preview::draw_preview(frame, app, content_area);
         }
-    } else if let Some(ref textarea) = app.textarea {
+    } else if let Some(ref textarea) = app.editor.textarea {
         editor::draw_editor(frame, textarea, main_area);
     } else {
         preview::draw_preview(frame, app, main_area);
@@ -58,8 +55,11 @@ fn draw_file_list(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect)
     };
 
     // Use filtered tree items if file search is active, otherwise full tree.
-    let items =
-        if let Some(ref filtered) = app.filtered_tree_items { filtered } else { &app.tree_items };
+    let items = if let Some(ref filtered) = app.tree.filtered_tree_items {
+        filtered
+    } else {
+        &app.tree.tree_items
+    };
 
     // Show empty vault message if no items.
     if items.is_empty() {
@@ -83,7 +83,7 @@ fn draw_file_list(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect)
         Err(_) => return,
     };
 
-    frame.render_stateful_widget(tree_widget, area, &mut app.tree_state);
+    frame.render_stateful_widget(tree_widget, area, &mut app.tree.tree_state);
 }
 
 /// Compute a centered rectangle of the given size, clamped to the area.
@@ -101,10 +101,7 @@ fn draw_help_overlay(frame: &mut Frame, area: Rect, bg_color: Color) {
 
     // Clear the area behind the popup.
     frame.render_widget(Clear, popup_area);
-    frame.render_widget(
-        Block::default().style(Style::default().bg(bg_color)),
-        popup_area,
-    );
+    frame.render_widget(Block::default().style(Style::default().bg(bg_color)), popup_area);
 
     let help_text = Text::from(vec![
         Line::from(""),

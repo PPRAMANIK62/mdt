@@ -34,12 +34,12 @@ impl App {
 
     /// Execute a command-mode command.
     pub(crate) fn execute_command(&mut self, cmd: &str) {
-        let in_editor = self.textarea.is_some();
+        let in_editor = self.editor.textarea.is_some();
 
         match cmd {
             "q" | "quit" => {
                 if in_editor {
-                    if self.is_dirty {
+                    if self.editor.is_dirty {
                         self.status_message = "Unsaved changes! :q! to force quit".to_string();
                     } else {
                         self.exit_editor();
@@ -83,33 +83,28 @@ mod tests {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
     use crate::app::{App, AppMode};
+    use crate::test_util::TempTestDir;
     use ratatui::style::Color;
 
     #[test]
     fn execute_quit_sets_should_quit() {
-        let dir = std::env::temp_dir().join("mdt-test-cmd-quit");
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("test.md"), "# Test").unwrap();
+        let dir = TempTestDir::new("mdt-test-cmd-quit");
+        dir.create_file("test.md", "# Test");
 
-        let mut app = App::new(dir.clone(), Color::Reset).unwrap();
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
         assert!(!app.should_quit);
 
         app.execute_command("q");
 
         assert!(app.should_quit);
-
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn esc_in_command_mode_returns_to_normal() {
-        let dir = std::env::temp_dir().join("mdt-test-cmd-esc");
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("test.md"), "# Test").unwrap();
+        let dir = TempTestDir::new("mdt-test-cmd-esc");
+        dir.create_file("test.md", "# Test");
 
-        let mut app = App::new(dir.clone(), Color::Reset).unwrap();
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
         app.mode = AppMode::Command;
         app.command_buffer = "some".to_string();
 
@@ -118,7 +113,5 @@ mod tests {
 
         assert_eq!(app.mode, AppMode::Normal);
         assert!(app.command_buffer.is_empty());
-
-        let _ = std::fs::remove_dir_all(&dir);
     }
 }

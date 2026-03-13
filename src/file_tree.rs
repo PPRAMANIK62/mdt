@@ -11,6 +11,9 @@ use tui_tree_widget::TreeItem;
 /// Return type for [`build_tree_items`]: tree items + ID-to-path lookup map.
 pub type TreeBuildResult = (Vec<TreeItem<'static, String>>, HashMap<String, (PathBuf, bool)>);
 
+/// Maximum directory depth when scanning for `.md` files.
+const DIR_SCAN_MAX_DEPTH: u32 = 3;
+
 /// Build a recursive tree of [`TreeItem`]s from a root directory.
 ///
 /// Returns the tree items and a map from tree ID (relative path from root)
@@ -38,7 +41,7 @@ fn build_items_recursive(
         let path = de.path();
         let ft = de.file_type()?;
 
-        if ft.is_dir() && dir_contains_md(&path, 3) {
+        if ft.is_dir() && dir_contains_md(&path, DIR_SCAN_MAX_DEPTH) {
             raw.push((name, path, true));
         } else if ft.is_file() && has_md_extension(&name) {
             raw.push((name, path, false));
@@ -115,5 +118,97 @@ fn dir_contains_md(dir: &Path, max_depth: u32) -> bool {
 
 /// Check if a filename ends with `.md` (case-insensitive).
 fn has_md_extension(name: &str) -> bool {
-    name.len() > 3 && name[name.len() - 3..].eq_ignore_ascii_case(".md")
+    Path::new(name).extension().is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_util::TempTestDir;
+
+    // ── has_md_extension ─────────────────────────────────────────
+
+    #[test]
+    fn has_md_extension_ascii_lowercase() {
+        assert!(has_md_extension("readme.md"));
+    }
+
+    #[test]
+    fn has_md_extension_ascii_uppercase() {
+        assert!(has_md_extension("README.MD"));
+    }
+
+    #[test]
+    fn has_md_extension_mixed_case() {
+        assert!(has_md_extension("Notes.Md"));
+    }
+
+    #[test]
+    fn has_md_extension_cjk_filename() {
+        assert!(has_md_extension("日本語.md"));
+    }
+
+    #[test]
+    fn has_md_extension_emoji_filename() {
+        assert!(has_md_extension("📝notes.md"));
+    }
+
+    #[test]
+    fn has_md_extension_no_extension() {
+        assert!(!has_md_extension("justtext"));
+    }
+
+    #[test]
+    fn has_md_extension_dot_only() {
+        assert!(!has_md_extension(".md"));
+    }
+
+    #[test]
+    fn has_md_extension_empty_string() {
+        assert!(!has_md_extension(""));
+    }
+
+    #[test]
+    fn has_md_extension_other_extension() {
+        assert!(!has_md_extension("file.txt"));
+    }
+
+    #[test]
+    fn has_md_extension_double_extension() {
+        assert!(has_md_extension("archive.tar.md"));
+    }
+
+    // ── build_tree_items ─────────────────────────────────────────
+
+    #[test]
+    fn build_tree_items_empty_dir() {
+        let dir = TempTestDir::new("mdt-test-ft-empty");
+
+        let (items, map) = build_tree_items(dir.path()).unwrap();
+        assert!(items.is_empty());
+        assert!(map.is_empty());
+    }
+
+    #[test]
+    fn build_tree_items_with_md_files() {
+        let dir = TempTestDir::new("mdt-test-ft-md");
+        dir.create_file("hello.md", "# Hello");
+        dir.create_file("world.md", "# World");
+
+        let (items, map) = build_tree_items(dir.path()).unwrap();
+        assert_eq!(items.len(), 2);
+        assert_eq!(map.len(), 2);
+    }
+
+    #[test]
+    fn build_tree_items_excludes_non_md() {
+        let dir = TempTestDir::new("mdt-test-ft-nonmd");
+        dir.create_file("notes.md", "# Notes");
+        dir.create_file("image.png", "fake png");
+        dir.create_file("data.json", "{}");
+
+        let (items, map) = build_tree_items(dir.path()).unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(map.len(), 1);
+    }
 }
