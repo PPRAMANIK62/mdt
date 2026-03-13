@@ -958,7 +958,7 @@ impl Renderer {
                 .collect();
 
             // Row height = tallest (most-wrapped) cell.
-            let row_height = wrapped_cells.iter().map(|c| c.len()).max().unwrap_or(1);
+            let row_height = wrapped_cells.iter().map(Vec::len).max().unwrap_or(1);
 
             // Render each visual sub-line of this row.
             for sub_line in 0..row_height {
