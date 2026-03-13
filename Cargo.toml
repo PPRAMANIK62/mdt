@@ -15,6 +15,9 @@ unicode-segmentation = "1"
 anyhow = "1"
 terminal-colorsaurus = "1"
 
+[dev-dependencies]
+tempfile = "3"
+
 [lints.clippy]
 pedantic = { level = "warn", priority = -1 }
 module_name_repetitions = "allow"
