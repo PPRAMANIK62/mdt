@@ -244,6 +244,7 @@ const BLOCKQUOTE_STYLE: Style = Style::new().fg(Color::Cyan);
 const CODE_BORDER_STYLE: Style = Style::new().fg(Color::DarkGray);
 const CODE_DEFAULT_STYLE: Style = Style::new();
 const HR_STYLE: Style = Style::new().fg(Color::DarkGray);
+const BLOCKQUOTE_INDENT_COLS: usize = 2;
 const TABLE_HEADER_STYLE: Style = Style::new().add_modifier(Modifier::BOLD).fg(Color::Cyan);
 const TABLE_BORDER_STYLE: Style = Style::new().fg(Color::DarkGray);
 
@@ -603,7 +604,7 @@ impl Renderer {
                 self.needs_newline = true;
             }
             TagEnd::CodeBlock => {
-                let effective = self.available_width.map(|w| w.saturating_sub(self.blockquote_depth * 2));
+                let effective = self.available_width.map(|w| w.saturating_sub(self.blockquote_depth * BLOCKQUOTE_INDENT_COLS));
                 self.render_code_block(effective);
                 self.in_code_block = false;
                 self.code_block_lang = None;
@@ -737,7 +738,7 @@ impl Renderer {
         if !self.lines.is_empty() {
             self.push_blank_line();
         }
-        let bq_offset = self.blockquote_depth * 2;
+        let bq_offset = self.blockquote_depth * BLOCKQUOTE_INDENT_COLS;
         let width = self.available_width.map(|w| w.saturating_sub(bq_offset)).unwrap_or(40);
         let rule = "─".repeat(width);
         self.lines.push(Line::from(Span::styled(rule, HR_STYLE)));
@@ -914,7 +915,7 @@ impl Renderer {
         }
 
         // Clamp to available width if provided.
-        let effective_width = self.available_width.map(|w| w.saturating_sub(self.blockquote_depth * 2));
+        let effective_width = self.available_width.map(|w| w.saturating_sub(self.blockquote_depth * BLOCKQUOTE_INDENT_COLS));
         if let Some(aw) = effective_width {
             // Total table width: sum(col_widths) + (num_cols * TABLE_CELL_PAD) + num_cols + 1
             // Each cell: " content " = col_width + TABLE_CELL_PAD, plus separators
@@ -1115,7 +1116,7 @@ impl Renderer {
 
         if let Some(width) = self.available_width {
             // Calculate effective width accounting for blockquote bars.
-            let bq_prefix_width = self.blockquote_depth * 2; // each "▎ " is 2 cols
+            let bq_prefix_width = self.blockquote_depth * BLOCKQUOTE_INDENT_COLS; // each "▎ " is 2 cols
             let effective_width = width.saturating_sub(bq_prefix_width);
             let wrapped_lines = wrap_spans(&spans, effective_width);
             let list_marker_width = self.list_marker_width;
