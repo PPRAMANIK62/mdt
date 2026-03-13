@@ -599,7 +599,8 @@ impl Renderer {
                 self.needs_newline = true;
             }
             TagEnd::CodeBlock => {
-                self.render_code_block(None);
+                let effective = self.available_width.map(|w| w.saturating_sub(self.blockquote_depth * 2));
+                self.render_code_block(effective);
                 self.in_code_block = false;
                 self.code_block_lang = None;
                 self.needs_newline = true;
@@ -732,7 +733,9 @@ impl Renderer {
         if !self.lines.is_empty() {
             self.push_blank_line();
         }
-        let rule = "────────────────────────────────────────";
+        let bq_offset = self.blockquote_depth * 2;
+        let width = self.available_width.map(|w| w.saturating_sub(bq_offset)).unwrap_or(40);
+        let rule = "─".repeat(width);
         self.lines.push(Line::from(Span::styled(rule, HR_STYLE)));
         self.needs_newline = true;
     }
@@ -821,9 +824,43 @@ impl Renderer {
         // Code lines with right border.
         for line_spans in highlighted_lines {
             let content_width = spans_display_width(&line_spans);
-            let padding = max_width.saturating_sub(content_width);
+            let truncated_spans = if content_width > max_width {
+                // Truncate: iterate spans, accumulate width, cut at max_width - 1 to fit "…"
+                let budget = max_width.saturating_sub(1); // 1 col for "…"
+                let mut result: Vec<Span<'static>> = Vec::new();
+                let mut used = 0usize;
+                for span in line_spans {
+                    let sw = span.content.width();
+                    if used + sw <= budget {
+                        result.push(span);
+                        used += sw;
+                    } else {
+                        // Partial span: take graphemes that fit
+                        let remaining = budget - used;
+                        if remaining > 0 {
+                            let mut partial = String::new();
+                            for g in span.content.graphemes(true) {
+                                if partial.width() + g.width() > remaining {
+                                    break;
+                                }
+                                partial.push_str(g);
+                            }
+                            if !partial.is_empty() {
+                                result.push(Span::styled(partial, span.style));
+                            }
+                        }
+                        result.push(Span::styled("…", CODE_BORDER_STYLE));
+                        break;
+                    }
+                }
+                result
+            } else {
+                line_spans
+            };
+            let truncated_width = spans_display_width(&truncated_spans);
+            let padding = max_width.saturating_sub(truncated_width);
             let mut spans = vec![Span::styled("│ ", CODE_BORDER_STYLE)];
-            spans.extend(line_spans);
+            spans.extend(truncated_spans);
             spans.push(Span::styled(format!("{} │", " ".repeat(padding)), CODE_BORDER_STYLE));
             self.lines.push(Line::from(spans));
         }
@@ -854,6 +891,11 @@ impl Renderer {
             return;
         }
 
+        // Helper: display width of a slice of spans.
+        fn cell_display_width(spans: &[Span<'_>]) -> usize {
+            spans.iter().map(|s| s.content.width()).sum()
+        }
+
         // Calculate column widths (max content width per column)
         let mut col_widths = vec![0usize; num_cols];
         for row in &rows {
@@ -865,6 +907,59 @@ impl Renderer {
         // Minimum column width of 3
         for w in &mut col_widths {
             *w = (*w).max(Self::TABLE_MIN_COL_WIDTH);
+        }
+
+        // Clamp to available width if provided.
+        let effective_width = self.available_width.map(|w| w.saturating_sub(self.blockquote_depth * 2));
+        if let Some(aw) = effective_width {
+            // Total table width: sum(col_widths) + (num_cols * TABLE_CELL_PAD) + num_cols + 1
+            // Each cell: " content " = col_width + TABLE_CELL_PAD, plus separators
+            let total: usize = col_widths.iter().sum::<usize>() + (num_cols * Self::TABLE_CELL_PAD) + num_cols + 1;
+            if total > aw && num_cols > 0 {
+                // Shrink columns proportionally
+                let border_overhead = (num_cols * Self::TABLE_CELL_PAD) + num_cols + 1;
+                let available_content = aw.saturating_sub(border_overhead);
+                let current_content: usize = col_widths.iter().sum();
+                for w in &mut col_widths {
+                    let shrunk = (*w * available_content) / current_content.max(1);
+                    *w = shrunk.max(Self::TABLE_MIN_COL_WIDTH);
+                }
+            }
+        }
+
+        // Helper to truncate cell spans to a given column width.
+        fn truncate_cell_spans(cell_spans: &[Span<'_>], col_width: usize) -> Vec<Span<'static>> {
+            let content_width: usize = cell_spans.iter().map(|s| s.content.width()).sum();
+            if content_width <= col_width {
+                return cell_spans.iter().cloned().map(|s| Span::styled(s.content.into_owned(), s.style)).collect();
+            }
+            let budget = col_width.saturating_sub(1); // 1 col for "…"
+            let mut result: Vec<Span<'static>> = Vec::new();
+            let mut used = 0usize;
+            for span in cell_spans {
+                let sw = span.content.width();
+                if used + sw <= budget {
+                    result.push(Span::styled(span.content.to_string(), span.style));
+                    used += sw;
+                } else {
+                    let remaining = budget - used;
+                    if remaining > 0 {
+                        let mut partial = String::new();
+                        for g in span.content.graphemes(true) {
+                            if partial.width() + g.width() > remaining {
+                                break;
+                            }
+                            partial.push_str(g);
+                        }
+                        if !partial.is_empty() {
+                            result.push(Span::styled(partial, span.style));
+                        }
+                    }
+                    result.push(Span::styled("…", TABLE_BORDER_STYLE));
+                    break;
+                }
+            }
+            result
         }
 
         // Helper to build a horizontal border line
@@ -894,10 +989,11 @@ impl Renderer {
                     Some(c) => c,
                     None => &[],
                 };
-                let content_width: usize = cell_spans.iter().map(|s| s.content.width()).sum();
-                let padding = col_width.saturating_sub(content_width);
+                let truncated = truncate_cell_spans(cell_spans, *col_width);
+                let truncated_width = cell_display_width(&truncated);
+                let padding = col_width.saturating_sub(truncated_width);
 
-                spans.extend(cell_spans.iter().cloned());
+                spans.extend(truncated);
                 spans.push(Span::styled(format!("{} │ ", " ".repeat(padding)), TABLE_BORDER_STYLE));
             }
 
@@ -1666,5 +1762,105 @@ mod tests {
                 );
             }
         }
+    }
+
+    // ── Width-aware rendering tests ────────────────────────────────────
+
+    #[test]
+    fn hr_fills_available_width() {
+        let text = render_at_width("---", 60);
+        let content = text_content(&text);
+        let hr_line = content.iter().find(|l| l.contains('─')).expect("HR line missing");
+        // Count the number of ─ characters
+        let dash_count = hr_line.chars().filter(|&c| c == '─').count();
+        assert_eq!(dash_count, 60, "HR should be 60 chars wide, got {dash_count}");
+    }
+
+    #[test]
+    fn hr_default_width_without_constraint() {
+        let text = render_markdown("---\n", None);
+        let content = text_content(&text);
+        let hr_line = content.iter().find(|l| l.contains('─')).expect("HR line missing");
+        let dash_count = hr_line.chars().filter(|&c| c == '─').count();
+        assert_eq!(dash_count, 40, "Default HR should be 40 chars wide, got {dash_count}");
+    }
+
+    #[test]
+    fn code_block_truncated_at_width() {
+        let input = "```\nvery long line of code that definitely exceeds the width limit we set\n```";
+        let text = render_at_width(input, 30);
+        let content = text_content(&text);
+        // All lines must fit within 30 columns.
+        assert!(
+            max_line_width(&text) <= 30,
+            "Code block line exceeded width 30: {content:?}",
+        );
+        // Border chars must be intact.
+        let joined = content.join("\n");
+        assert!(joined.contains('┌'), "Missing code block header");
+        assert!(joined.contains('└'), "Missing code block footer");
+        assert!(joined.contains('│'), "Missing code block side borders");
+        // Truncated line must have ellipsis.
+        assert!(joined.contains('…'), "Missing truncation indicator '…'");
+    }
+
+    #[test]
+    fn code_block_fits_no_truncation() {
+        let input = "```\nshort\n```";
+        let text = render_at_width(input, 40);
+        let content = text_content(&text);
+        let joined = content.join("\n");
+        // Borders intact.
+        assert!(joined.contains('┌'), "Missing header");
+        assert!(joined.contains('└'), "Missing footer");
+        // No truncation indicator.
+        assert!(!joined.contains('…'), "Unexpected truncation in short code block");
+        // Content present.
+        assert!(joined.contains("short"), "Code content missing");
+    }
+
+    #[test]
+    fn table_truncated_at_width() {
+        let input = "| Very Long Header Name | Another Long Column Header |\n|---|---|\n| cell content here | more cell content here |\n";
+        let text = render_at_width(input, 30);
+        let content = text_content(&text);
+        // All lines must fit within 30 columns.
+        assert!(
+            max_line_width(&text) <= 30,
+            "Table line exceeded width 30: {content:?}",
+        );
+        // Table borders must be intact.
+        let joined = content.join("\n");
+        assert!(joined.contains('┌'), "Missing table top border");
+        assert!(joined.contains('┘'), "Missing table bottom border");
+        assert!(joined.contains('│'), "Missing table cell border");
+    }
+
+    #[test]
+    fn table_fits_no_truncation() {
+        let input = "| A | B |\n|---|---|\n| 1 | 2 |\n";
+        let text = render_at_width(input, 80);
+        let content = text_content(&text);
+        let joined = content.join("\n");
+        // No truncation indicator.
+        assert!(!joined.contains('…'), "Unexpected truncation in narrow table");
+        // Content fully present.
+        assert!(joined.contains('A'), "Header content missing");
+        assert!(joined.contains('B'), "Header content missing");
+        assert!(joined.contains('1'), "Cell content missing");
+        assert!(joined.contains('2'), "Cell content missing");
+    }
+
+    #[test]
+    fn table_cell_content_truncated_with_ellipsis() {
+        let input = "| VeryLongCellContentThatExceedsWidth | Short |\n|---|---|\n| AnotherLongCellContent | X |\n";
+        let text = render_at_width(input, 25);
+        let content = text_content(&text);
+        let joined = content.join("\n");
+        // At width 25, cells should be truncated.
+        assert!(joined.contains('…'), "Missing truncation indicator in table cells");
+        // Borders intact.
+        assert!(joined.contains('┌'), "Missing table top border");
+        assert!(joined.contains('┘'), "Missing table bottom border");
     }
 }
