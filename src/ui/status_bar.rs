@@ -31,11 +31,7 @@ pub fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect) {
     let mode = format!(" {} ", app.mode);
 
     // Center: file path + dirty indicator + status message.
-    let file_info: String = if let Some(ref path) = app.document.current_file {
-        path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
-    } else {
-        String::new()
-    };
+    let file_info = app.display_file_path();
 
     let dirty_indicator = if app.editor.is_dirty { " [+]" } else { "" };
 

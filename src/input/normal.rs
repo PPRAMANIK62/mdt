@@ -174,8 +174,7 @@ impl App {
                 self.document.file_content = content;
                 self.document.current_file = Some(path.to_path_buf());
                 self.document.scroll_offset = 0;
-                self.status_message =
-                    path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                self.status_message.clear();
             }
             Err(e) => {
                 self.status_message = format!("Error: {e}");
@@ -306,7 +305,7 @@ mod tests {
         let mut app = App::new(dir.path(), Color::Reset).unwrap();
         app.open_file(&md_path);
 
-        assert_eq!(app.status_message, "hello.md");
+        assert!(app.status_message.is_empty());
         assert_eq!(app.document.current_file, Some(md_path));
     }
 }

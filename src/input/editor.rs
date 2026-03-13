@@ -64,13 +64,12 @@ impl App {
 
         let mut textarea = TextArea::from(self.document.file_content.lines());
 
-        let title = self
-            .document
-            .current_file
-            .as_ref()
-            .and_then(|p| p.file_name())
-            .map(|n| format!(" Editor: {} ", n.to_string_lossy()))
-            .unwrap_or_else(|| " Editor ".to_string());
+        let file_path = self.display_file_path();
+        let title = if file_path.is_empty() {
+            " Editor ".to_string()
+        } else {
+            format!(" Editor: {} ", file_path)
+        };
 
         textarea.set_block(Block::default().title(title).borders(Borders::ALL));
         textarea.set_line_number_style(Style::default());
@@ -111,9 +110,7 @@ impl App {
                 self.document.rendered_lines = rendered.lines;
                 self.editor.is_dirty = false;
 
-                let name =
-                    path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-                self.status_message = format!("\"{}\" written", name);
+                self.status_message = "written".to_string();
                 true
             }
             Err(e) => {

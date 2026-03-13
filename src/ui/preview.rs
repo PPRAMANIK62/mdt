@@ -6,30 +6,16 @@
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span, Text};
-use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::widgets::{Block, Padding, Paragraph};
 use ratatui::Frame;
 
-use crate::app::{App, Focus};
+use crate::app::App;
 
 /// Draw the preview pane with virtual scrolling.
 ///
 /// Sets `app.document.viewport_height` as a side effect so scroll clamping works.
 pub fn draw_preview(frame: &mut Frame, app: &mut App, area: Rect) {
-    let border_style = if app.focus == Focus::Preview {
-        Style::default().fg(Color::White)
-    } else {
-        Style::default().fg(Color::DarkGray)
-    };
-
-    let title = app
-        .document
-        .current_file
-        .as_ref()
-        .and_then(|p| p.file_name())
-        .map(|n| format!(" {} ", n.to_string_lossy()))
-        .unwrap_or_else(|| " Preview ".to_string());
-
-    let block = Block::default().title(title).borders(Borders::ALL).border_style(border_style);
+    let block = Block::default().padding(Padding::new(2, 2, 1, 0));
 
     // Inner area height (excluding borders) is the viewport.
     let inner = block.inner(area);

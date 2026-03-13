@@ -39,18 +39,18 @@ pub fn render_markdown(input: &str) -> Text<'static> {
 
 const H1_STYLE: Style = Style::new().add_modifier(Modifier::BOLD).fg(Color::Cyan);
 const H2_STYLE: Style = Style::new().add_modifier(Modifier::BOLD).fg(Color::Green);
-const H3_STYLE: Style = Style::new().add_modifier(Modifier::BOLD);
+const H3_STYLE: Style = Style::new().add_modifier(Modifier::BOLD).fg(Color::Yellow);
 const H4_STYLE: Style = Style::new().add_modifier(Modifier::BOLD).fg(Color::DarkGray);
-const BOLD_STYLE: Style = Style::new().add_modifier(Modifier::BOLD);
+const BOLD_STYLE: Style = Style::new().add_modifier(Modifier::BOLD).fg(Color::LightRed);
 const ITALIC_STYLE: Style = Style::new().add_modifier(Modifier::ITALIC);
 const STRIKETHROUGH_STYLE: Style = Style::new().add_modifier(Modifier::CROSSED_OUT);
-const INLINE_CODE_STYLE: Style = Style::new().fg(Color::Yellow);
+const INLINE_CODE_STYLE: Style = Style::new().fg(Color::LightCyan);
 const LINK_STYLE: Style = Style::new().add_modifier(Modifier::UNDERLINED).fg(Color::Blue);
-const BLOCKQUOTE_STYLE: Style = Style::new().fg(Color::DarkGray);
+const BLOCKQUOTE_STYLE: Style = Style::new().fg(Color::Cyan);
 const CODE_BORDER_STYLE: Style = Style::new().fg(Color::DarkGray);
 const CODE_DEFAULT_STYLE: Style = Style::new();
 const HR_STYLE: Style = Style::new().fg(Color::DarkGray);
-const TABLE_HEADER_STYLE: Style = Style::new().add_modifier(Modifier::BOLD);
+const TABLE_HEADER_STYLE: Style = Style::new().add_modifier(Modifier::BOLD).fg(Color::Cyan);
 const TABLE_BORDER_STYLE: Style = Style::new().fg(Color::DarkGray);
 
 // ── Syntax highlighting ─────────────────────────────────────────────────────
@@ -314,6 +314,7 @@ impl Renderer {
                     self.push_blank_line();
                 }
                 self.blockquote_depth += 1;
+                self.style_stack.push(Style::new().fg(Color::Gray));
             }
             Tag::CodeBlock(kind) => {
                 if self.needs_newline {
@@ -392,6 +393,7 @@ impl Renderer {
                 self.style_stack.pop();
             }
             TagEnd::BlockQuote(_) => {
+                self.style_stack.pop();
                 self.blockquote_depth = self.blockquote_depth.saturating_sub(1);
                 self.needs_newline = true;
             }
@@ -767,13 +769,13 @@ impl Renderer {
                     };
                     self.current_spans.push(Span::styled(indent, Style::default()));
                     self.current_spans
-                        .push(Span::styled(format!("{bullet} "), Style::new().fg(Color::DarkGray)));
+                        .push(Span::styled(format!("{bullet} "), Style::new().fg(Color::Gray)));
                 }
                 Some(ref mut num) => {
                     // Ordered list — use number.
                     self.current_spans.push(Span::styled(indent, Style::default()));
                     self.current_spans
-                        .push(Span::styled(format!("{num}. "), Style::new().fg(Color::DarkGray)));
+                        .push(Span::styled(format!("{num}. "), Style::new().fg(Color::Gray)));
                     *num += 1;
                 }
             }

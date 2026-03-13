@@ -85,12 +85,14 @@ pub struct App {
     pub(crate) show_help: bool,
     pub(crate) show_file_tree: bool,
     pub(crate) bg_color: ratatui::style::Color,
+    pub(crate) root_path: PathBuf,
 }
 
 impl App {
     /// Create a new `App` rooted at `path`.
     pub fn new(path: &Path, bg_color: ratatui::style::Color) -> anyhow::Result<Self> {
         let (tree_items, path_map) = file_tree::build_tree_items(path)?;
+        let root_path = std::fs::canonicalize(path)?;
         let tree_state = TreeState::default();
         Ok(Self {
             tree: TreeViewState {
@@ -123,6 +125,7 @@ impl App {
             show_help: false,
             show_file_tree: true,
             bg_color,
+            root_path,
         })
     }
 
@@ -151,6 +154,22 @@ impl App {
             AppMode::Command => self.handle_command_key(key),
             AppMode::Search => self.handle_search_key(key),
         }
+    }
+}
+
+impl App {
+    /// Get the display path for the current file (relative to root).
+    pub(crate) fn display_file_path(&self) -> String {
+        self.document
+            .current_file
+            .as_ref()
+            .map(|p| {
+                p.strip_prefix(&self.root_path)
+                    .unwrap_or(p)
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .unwrap_or_default()
     }
 }
 
