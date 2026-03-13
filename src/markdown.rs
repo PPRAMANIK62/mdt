@@ -926,40 +926,6 @@ impl Renderer {
             }
         }
 
-        // Helper to truncate cell spans to a given column width.
-        fn truncate_cell_spans(cell_spans: &[Span<'_>], col_width: usize) -> Vec<Span<'static>> {
-            let content_width: usize = cell_spans.iter().map(|s| s.content.width()).sum();
-            if content_width <= col_width {
-                return cell_spans.iter().cloned().map(|s| Span::styled(s.content.into_owned(), s.style)).collect();
-            }
-            let budget = col_width.saturating_sub(1); // 1 col for "…"
-            let mut result: Vec<Span<'static>> = Vec::new();
-            let mut used = 0usize;
-            for span in cell_spans {
-                let sw = span.content.width();
-                if used + sw <= budget {
-                    result.push(Span::styled(span.content.to_string(), span.style));
-                    used += sw;
-                } else {
-                    let remaining = budget - used;
-                    if remaining > 0 {
-                        let mut partial = String::new();
-                        for g in span.content.graphemes(true) {
-                            if partial.width() + g.width() > remaining {
-                                break;
-                            }
-                            partial.push_str(g);
-                        }
-                        if !partial.is_empty() {
-                            result.push(Span::styled(partial, span.style));
-                        }
-                    }
-                    result.push(Span::styled("…", TABLE_BORDER_STYLE));
-                    break;
-                }
-            }
-            result
-        }
 
         // Helper to build a horizontal border line
         let build_border = |left: &str, mid: &str, right: &str, fill: &str| -> Line<'static> {
@@ -978,25 +944,50 @@ impl Renderer {
         self.lines.push(build_border("┌", "┬", "┐", "─"));
 
         for (row_idx, row) in rows.iter().enumerate() {
-            // Content line: │ cell │ cell │
-            let mut spans: Vec<Span<'static>> = Vec::new();
-            spans.push(Span::styled("│ ", TABLE_BORDER_STYLE));
+            // Wrap each cell's content to get multiple visual lines per cell.
+            let wrapped_cells: Vec<Vec<Vec<Span<'static>>>> = col_widths
+                .iter()
+                .enumerate()
+                .map(|(col_idx, col_width)| {
+                    let cell_spans: &[Span] = match row.get(col_idx) {
+                        Some(c) => c,
+                        None => &[],
+                    };
+                    wrap_spans(cell_spans, *col_width)
+                })
+                .collect();
 
-            for (col_idx, col_width) in col_widths.iter().enumerate() {
-                let cell = row.get(col_idx);
-                let cell_spans: &[Span] = match cell {
-                    Some(c) => c,
-                    None => &[],
-                };
-                let truncated = truncate_cell_spans(cell_spans, *col_width);
-                let truncated_width = cell_display_width(&truncated);
-                let padding = col_width.saturating_sub(truncated_width);
+            // Row height = tallest (most-wrapped) cell.
+            let row_height = wrapped_cells.iter().map(|c| c.len()).max().unwrap_or(1);
 
-                spans.extend(truncated);
-                spans.push(Span::styled(format!("{} │ ", " ".repeat(padding)), TABLE_BORDER_STYLE));
+            // Render each visual sub-line of this row.
+            for sub_line in 0..row_height {
+                let mut spans: Vec<Span<'static>> = Vec::new();
+                spans.push(Span::styled("│ ", TABLE_BORDER_STYLE));
+
+                for (col_idx, col_width) in col_widths.iter().enumerate() {
+                    let cell_line_spans = wrapped_cells
+                        .get(col_idx)
+                        .and_then(|lines| lines.get(sub_line));
+
+                    let (line_spans, content_width) = match cell_line_spans {
+                        Some(ls) => {
+                            let w = cell_display_width(ls);
+                            (ls.clone(), w)
+                        }
+                        None => (vec![], 0),
+                    };
+
+                    let padding = col_width.saturating_sub(content_width);
+                    spans.extend(line_spans);
+                    spans.push(Span::styled(
+                        format!("{} │ ", " ".repeat(padding)),
+                        TABLE_BORDER_STYLE,
+                    ));
+                }
+
+                self.lines.push(Line::from(spans));
             }
-
-            self.lines.push(Line::from(spans));
 
             // After the first row (header), add separator: ├───┼───┤
             if row_idx == 0 && rows.len() > 1 {
@@ -1851,13 +1842,20 @@ mod tests {
     }
 
     #[test]
-    fn table_cell_content_truncated_with_ellipsis() {
+    fn table_cell_content_wraps_instead_of_truncating() {
         let input = "| VeryLongCellContentThatExceedsWidth | Short |\n|---|---|\n| AnotherLongCellContent | X |\n";
         let text = render_at_width(input, 25);
         let content = text_content(&text);
         let joined = content.join("\n");
-        // At width 25, cells should be truncated.
-        assert!(joined.contains('…'), "Missing truncation indicator in table cells");
+        // Content should wrap, NOT truncate — no ellipsis.
+        assert!(!joined.contains('\u{2026}'), "Content should wrap, not truncate with ellipsis");
+        // Extract per-column text by collecting span content from each Line, skipping border spans.
+        // Since columns interleave on visual lines, we verify no content is lost by checking
+        // that no ellipsis exists and that wrapping produced extra lines (below).
+        // Wrapping means more visual lines than a non-wrapped table.
+        // A 2-row table (header + 1 data) with no wrapping = 5 lines (top border, header, separator, data, bottom border).
+        // With wrapping it must be more.
+        assert!(text.lines.len() > 5, "Table should have extra lines from wrapping, got {}", text.lines.len());
         // Borders intact.
         assert!(joined.contains('┌'), "Missing table top border");
         assert!(joined.contains('┘'), "Missing table bottom border");
