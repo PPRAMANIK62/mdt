@@ -6,7 +6,7 @@
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span, Text};
-use ratatui::widgets::{Block, Padding, Paragraph, Wrap};
+use ratatui::widgets::{Block, Padding, Paragraph};
 use ratatui::Frame;
 
 use crate::app::App;
@@ -82,7 +82,7 @@ pub fn draw_preview(frame: &mut Frame, app: &mut App, area: Rect) {
     };
 
     // scroll((0, 0)) because we already sliced the lines ourselves.
-    let paragraph = Paragraph::new(text).block(block).wrap(Wrap { trim: false }).scroll((0, 0));
+    let paragraph = Paragraph::new(text).block(block).scroll((0, 0));
     frame.render_widget(paragraph, area);
 }
 

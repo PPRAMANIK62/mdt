@@ -1871,4 +1871,66 @@ mod tests {
         let narrow = render_at_width(input, 20);
         assert!(narrow.lines.len() > wide.lines.len(), "Narrow should have more lines");
     }
+
+    #[test]
+    fn comprehensive_width_integration() {
+        let input = "\
+# A Heading That Is Fairly Long
+
+This is a paragraph with enough words to need wrapping at narrow widths.
+
+> A blockquote that also has enough text to require wrapping at this width.
+
+- A list item with enough words to demonstrate hanging indent on continuation lines
+- Second item
+
+1. First ordered item with text that wraps
+2. Second ordered item
+
+```rust
+fn example() { let very_long_variable_name = \"some value\"; }
+```
+
+| Key | Description |
+|---|---|
+| j/k | Navigate up and down |
+
+---
+";
+        let width = 40;
+        let text = render_at_width(input, width);
+        let content = text_content(&text);
+
+        // 1. No line exceeds the width
+        assert!(
+            max_line_width(&text) <= width,
+            "Line exceeded width {width}: max was {}",
+            max_line_width(&text),
+        );
+
+        // 2. Has multiple lines (wrapping occurred)
+        assert!(content.len() > 10, "Expected many lines, got {}", content.len());
+
+        // 3. Code block borders present and intact
+        let joined = content.join("\n");
+        assert!(joined.contains('┌'), "Missing code block header");
+        assert!(joined.contains('└'), "Missing code block footer");
+        assert!(joined.contains('│'), "Missing code block borders");
+
+        // 4. Table borders present
+        assert!(joined.contains("Key"), "Table header missing");
+        assert!(joined.contains("Navigate"), "Table content missing");
+
+        // 5. Blockquote bars present
+        assert!(joined.contains('▎'), "Blockquote bar missing");
+
+        // 6. List bullets present
+        assert!(joined.contains('•'), "List bullet missing");
+
+        // 7. HR present
+        assert!(joined.contains('─'), "HR missing");
+
+        // 8. Heading text present
+        assert!(joined.contains("Heading"), "Heading text missing");
+    }
 }
