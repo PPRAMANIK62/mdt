@@ -23,7 +23,7 @@ use unicode_segmentation::UnicodeSegmentation;
 pub fn render_markdown(input: &str, available_width: Option<usize>) -> Text<'static> {
     let cleaned = input.replace('\t', "    ");
 
-    if std::env::var("NO_COLOR").is_ok() {
+    if no_color() {
         return Text::raw(cleaned);
     }
 
@@ -335,6 +335,11 @@ fn syntax_set() -> &'static SyntaxSet {
 fn scope_matchers() -> &'static ScopeMatchers {
     static MATCHERS: OnceLock<ScopeMatchers> = OnceLock::new();
     MATCHERS.get_or_init(ScopeMatchers::new)
+}
+
+fn no_color() -> bool {
+    static NO_COLOR: OnceLock<bool> = OnceLock::new();
+    *NO_COLOR.get_or_init(|| std::env::var("NO_COLOR").is_ok_and(|v| !v.is_empty()))
 }
 
 /// Map the most-specific scope in the stack to an ANSI style.
