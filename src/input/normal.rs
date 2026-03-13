@@ -1,11 +1,7 @@
-use std::path::Path;
 use std::time::Instant;
-
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::app::{App, AppMode, Focus};
-use crate::markdown::render_markdown;
-
 /// Timeout in milliseconds for composed key sequences (e.g., `gg`, `Space+e`).
 const DOUBLE_KEY_TIMEOUT_MS: u128 = 500;
 
@@ -24,7 +20,7 @@ impl App {
                 match (pending_char, key.code) {
                     ('g', KeyCode::Char('g')) => {
                         match self.focus {
-                            Focus::Preview => self.scroll_to_top(),
+                            Focus::Preview => self.document.scroll_to_top(),
                             Focus::FileList => {
                                 self.tree.tree_state.select_first();
                             }
@@ -47,13 +43,13 @@ impl App {
                 Focus::FileList => {
                     self.tree.tree_state.key_down();
                 }
-                Focus::Preview => self.scroll_down(),
+                Focus::Preview => self.document.scroll_down(),
             },
             KeyCode::Char('k') | KeyCode::Up => match self.focus {
                 Focus::FileList => {
                     self.tree.tree_state.key_up();
                 }
-                Focus::Preview => self.scroll_up(),
+                Focus::Preview => self.document.scroll_up(),
             },
             KeyCode::Enter => self.handle_enter(),
             KeyCode::Tab => self.toggle_focus(),
@@ -75,7 +71,7 @@ impl App {
                 Focus::FileList => {
                     self.tree.tree_state.select_last();
                 }
-                Focus::Preview => self.scroll_to_bottom(),
+                Focus::Preview => self.document.scroll_to_bottom(),
             },
 
             // --- g: start pending key for gg (both focuses) ---
@@ -91,12 +87,12 @@ impl App {
             // --- Preview-only scrolling ---
             KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 if self.focus == Focus::Preview {
-                    self.scroll_half_page_down();
+                    self.document.scroll_half_page_down();
                 }
             }
             KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 if self.focus == Focus::Preview {
-                    self.scroll_half_page_up();
+                    self.document.scroll_half_page_up();
                 }
             }
 
@@ -157,30 +153,6 @@ impl App {
         }
     }
 
-    /// Read a file, render its markdown, and store the result.
-    pub(crate) fn open_file(&mut self, path: &Path) {
-        const MAX_FILE_SIZE: u64 = 5_000_000;
-        if let Ok(metadata) = std::fs::metadata(path) {
-            if metadata.len() > MAX_FILE_SIZE {
-                self.status_message = "File too large (>5MB)".to_string();
-                return;
-            }
-        }
-
-        match std::fs::read_to_string(path) {
-            Ok(content) => {
-                let rendered = render_markdown(&content, if self.document.viewport_width > 0 { Some(self.document.viewport_width) } else { None });
-                self.document.rendered_lines = rendered.lines;
-                self.document.file_content = content;
-                self.document.current_file = Some(path.to_path_buf());
-                self.document.scroll_offset = 0;
-                self.status_message.clear();
-            }
-            Err(e) => {
-                self.status_message = format!("Error: {e}");
-            }
-        }
-    }
 
     pub(crate) fn toggle_focus(&mut self) {
         self.focus = match self.focus {
@@ -198,47 +170,7 @@ impl App {
         }
     }
 
-    pub(crate) fn scroll_down(&mut self) {
-        if !self.document.rendered_lines.is_empty() {
-            self.document.scroll_offset = self.document.scroll_offset.saturating_add(1);
-            self.clamp_scroll();
-        }
     }
-
-    pub(crate) fn scroll_up(&mut self) {
-        self.document.scroll_offset = self.document.scroll_offset.saturating_sub(1);
-    }
-
-    pub(crate) fn scroll_to_top(&mut self) {
-        self.document.scroll_offset = 0;
-    }
-
-    pub(crate) fn scroll_to_bottom(&mut self) {
-        self.document.scroll_offset = self.max_scroll();
-    }
-
-    pub(crate) fn scroll_half_page_down(&mut self) {
-        let half = self.document.viewport_height / 2;
-        self.document.scroll_offset = self.document.scroll_offset.saturating_add(half.max(1));
-        self.clamp_scroll();
-    }
-
-    pub(crate) fn scroll_half_page_up(&mut self) {
-        let half = self.document.viewport_height / 2;
-        self.document.scroll_offset = self.document.scroll_offset.saturating_sub(half.max(1));
-    }
-
-    pub(crate) fn max_scroll(&self) -> usize {
-        self.document.rendered_lines.len().saturating_sub(self.document.viewport_height)
-    }
-
-    pub(crate) fn clamp_scroll(&mut self) {
-        let max = self.max_scroll();
-        if self.document.scroll_offset > max {
-            self.document.scroll_offset = max;
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -281,96 +213,4 @@ mod tests {
         assert!(app.command_buffer.is_empty());
     }
 
-    #[test]
-    fn open_file_rejects_large_files() {
-        let dir = TempTestDir::new("mdt-test-open-file-large");
-        // Create a file just over 5MB
-        let big_path = dir.path().join("big.md");
-        let data = vec![b'x'; 5_000_001];
-        std::fs::write(&big_path, &data).unwrap();
-
-        let mut app = App::new(dir.path(), Color::Reset).unwrap();
-        app.open_file(&big_path);
-
-        assert_eq!(app.status_message, "File too large (>5MB)");
-        assert!(app.document.current_file.is_none());
     }
-
-    #[test]
-    fn open_file_succeeds_for_small_file() {
-        let dir = TempTestDir::new("mdt-test-open-file-small");
-        dir.create_file("hello.md", "# Hello");
-        let md_path = dir.path().join("hello.md");
-
-        let mut app = App::new(dir.path(), Color::Reset).unwrap();
-        app.open_file(&md_path);
-
-        assert!(app.status_message.is_empty());
-        assert_eq!(app.document.current_file, Some(md_path));
-    }
-
-    #[test]
-    fn scroll_down_increments_offset() {
-        let dir = TempTestDir::new("mdt-test-scroll-down");
-        let content = (0..30).map(|i| format!("line {i}")).collect::<Vec<_>>().join("\n\n");
-        dir.create_file("long.md", &content);
-
-        let mut app = App::new(dir.path(), Color::Reset).unwrap();
-        app.open_file(&dir.path().join("long.md"));
-        app.document.viewport_height = 10;
-        assert_eq!(app.document.scroll_offset, 0);
-
-        app.scroll_down();
-
-        assert_eq!(app.document.scroll_offset, 1);
-    }
-
-    #[test]
-    fn scroll_half_page_down_moves_half_viewport() {
-        let dir = TempTestDir::new("mdt-test-scroll-half-down");
-        let content = (0..50).map(|i| format!("line {i}")).collect::<Vec<_>>().join("\n\n");
-        dir.create_file("long.md", &content);
-
-        let mut app = App::new(dir.path(), Color::Reset).unwrap();
-        app.open_file(&dir.path().join("long.md"));
-        app.document.viewport_height = 20;
-
-        app.scroll_half_page_down();
-
-        assert_eq!(app.document.scroll_offset, 10);
-    }
-
-    #[test]
-    fn scroll_to_top_resets_to_zero() {
-        let dir = TempTestDir::new("mdt-test-scroll-top");
-        let content = (0..30).map(|i| format!("line {i}")).collect::<Vec<_>>().join("\n\n");
-        dir.create_file("long.md", &content);
-
-        let mut app = App::new(dir.path(), Color::Reset).unwrap();
-        app.open_file(&dir.path().join("long.md"));
-        app.document.viewport_height = 10;
-        app.document.scroll_offset = 15;
-
-        app.scroll_to_top();
-
-        assert_eq!(app.document.scroll_offset, 0);
-    }
-
-    #[test]
-    fn scroll_to_bottom_sets_max_scroll() {
-        let dir = TempTestDir::new("mdt-test-scroll-bottom");
-        let content = (0..50).map(|i| format!("line {i}")).collect::<Vec<_>>().join("\n\n");
-        dir.create_file("long.md", &content);
-
-        let mut app = App::new(dir.path(), Color::Reset).unwrap();
-        app.open_file(&dir.path().join("long.md"));
-        app.document.viewport_height = 10;
-
-        app.scroll_to_bottom();
-
-        let expected = app.document.rendered_lines.len().saturating_sub(10);
-        assert_eq!(app.document.scroll_offset, expected);
-        assert!(app.document.scroll_offset > 0);
-    }
-}
-

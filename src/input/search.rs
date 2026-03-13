@@ -41,6 +41,12 @@ impl App {
     }
 
     /// Rebuild filtered tree items based on current search query (file search).
+    ///
+    /// **Design note:** `filtered_tree_items` and `filtered_path_map` are intentionally
+    /// mutated here rather than in a separate tree-filtering module. File search filtering
+    /// is logically part of search functionality — the filter exists *only* to serve the
+    /// search feature, and clearing the search restores the original unfiltered tree state.
+    /// This is not a separation-of-concerns violation.
     pub(crate) fn update_file_search_filter(&mut self) {
         if self.search.query.is_empty() {
             self.tree.filtered_tree_items = None;
@@ -103,7 +109,7 @@ impl App {
         // Scroll to first match.
         if let Some(&line_num) = self.search.matches.first() {
             self.document.scroll_offset = line_num.saturating_sub(2);
-            self.clamp_scroll();
+            self.document.clamp_scroll();
             self.status_message =
                 format!("/{} [{}/{}]", self.search.query, 1, self.search.matches.len());
         } else {
@@ -124,7 +130,7 @@ impl App {
         }
         if let Some(&line_num) = self.search.matches.get(self.search.current) {
             self.document.scroll_offset = line_num.saturating_sub(2);
-            self.clamp_scroll();
+            self.document.clamp_scroll();
             self.status_message = format!(
                 "/{} [{}/{}]",
                 self.search.query,
@@ -146,7 +152,7 @@ impl App {
         }
         if let Some(&line_num) = self.search.matches.get(self.search.current) {
             self.document.scroll_offset = line_num.saturating_sub(2);
-            self.clamp_scroll();
+            self.document.clamp_scroll();
             self.status_message = format!(
                 "/{} [{}/{}]",
                 self.search.query,
@@ -156,7 +162,12 @@ impl App {
         }
     }
 
-    /// Clear all search state.
+    /// Clear all search state, restoring the original unfiltered tree.
+    ///
+    /// Resetting `filtered_tree_items` and `filtered_path_map` to `None` here is correct
+    /// because these fields only exist to support search-driven filtering. Clearing them
+    /// restores the pre-search tree state as the user expects when cancelling or finishing
+    /// a search.
     pub(crate) fn clear_search(&mut self) {
         self.search.active = false;
         self.search.query.clear();
