@@ -1,5 +1,4 @@
 mod app;
-#[allow(dead_code)] // Some fields/methods used by future tasks.
 mod file_tree;
 mod markdown;
 mod ui;
