@@ -93,7 +93,10 @@ impl App {
     pub fn new(path: &Path, bg_color: ratatui::style::Color) -> anyhow::Result<Self> {
         let (tree_items, path_map) = file_tree::build_tree_items(path)?;
         let root_path = std::fs::canonicalize(path)?;
-        let tree_state = TreeState::default();
+        let mut tree_state = TreeState::default();
+        if let Some(first_item) = tree_items.first() {
+            tree_state.select(vec![first_item.identifier().clone()]);
+        }
         Ok(Self {
             tree: TreeViewState {
                 tree_state,

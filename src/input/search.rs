@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 
 use crossterm::event::{KeyCode, KeyEvent};
+use ratatui::style::{Color, Style};
+use ratatui::text::{Line, Span};
 use tui_tree_widget::TreeItem;
 
 use crate::app::{App, AppMode, Focus};
@@ -59,7 +61,13 @@ impl App {
             if name.contains(&query_lower) {
                 let display_name =
                     path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-                let item = TreeItem::new_leaf(id.clone(), display_name);
+                let item = TreeItem::new_leaf(
+                    id.clone(),
+                    Line::from(Span::styled(
+                        display_name,
+                        Style::new().fg(Color::Indexed(253)),
+                    )),
+                );
                 filtered_items.push(item);
                 filtered_map.insert(id.clone(), (path.clone(), *is_dir));
             }

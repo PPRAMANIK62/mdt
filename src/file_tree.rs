@@ -5,6 +5,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
+use ratatui::style::{Color, Modifier, Style};
+use ratatui::text::{Line, Span};
 use std::collections::HashMap;
 use tui_tree_widget::TreeItem;
 
@@ -65,11 +67,21 @@ fn build_items_recursive(
         if is_dir {
             let children = build_items_recursive(&abs_path, root, path_map)?;
             items.push(
-                TreeItem::new(rel, format!("\u{1f4c1} {name}"), children)
-                    .map_err(|e| anyhow::anyhow!("tree build error: {e}"))?,
+                TreeItem::new(
+                    rel,
+                    Line::from(Span::styled(
+                        format!("{name}/"),
+                        Style::new().fg(Color::Indexed(74)).add_modifier(Modifier::BOLD),
+                    )),
+                    children,
+                )
+                .map_err(|e| anyhow::anyhow!("tree build error: {e}"))?,
             );
         } else {
-            items.push(TreeItem::new_leaf(rel, name));
+            items.push(TreeItem::new_leaf(
+                rel,
+                Line::from(Span::styled(name, Style::new().fg(Color::Indexed(253)))),
+            ));
         }
     }
 

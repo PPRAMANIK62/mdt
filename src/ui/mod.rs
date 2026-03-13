@@ -5,7 +5,7 @@ pub mod status_bar;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
-use ratatui::widgets::{Block, Borders, Clear, Paragraph};
+use ratatui::widgets::{Block, Borders, Clear, Padding, Paragraph};
 use ratatui::Frame;
 use tui_tree_widget::Tree;
 
@@ -48,11 +48,6 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 }
 
 fn draw_file_list(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect) {
-    let border_style = if app.focus == Focus::FileList {
-        Style::default().fg(Color::White)
-    } else {
-        Style::default().fg(Color::DarkGray)
-    };
 
     // Use filtered tree items if file search is active, otherwise full tree.
     let items = if let Some(ref filtered) = app.tree.filtered_tree_items {
@@ -63,8 +58,10 @@ fn draw_file_list(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect)
 
     // Show empty vault message if no items.
     if items.is_empty() {
-        let block =
-            Block::default().title(" Files ").borders(Borders::ALL).border_style(border_style);
+        let block = Block::default()
+            .borders(Borders::RIGHT)
+            .border_style(Style::default().fg(Color::DarkGray))
+            .padding(Padding::new(0, 0, 1, 0));
         let msg = Paragraph::new("No markdown files found")
             .block(block)
             .style(Style::default().fg(Color::DarkGray));
@@ -75,11 +72,18 @@ fn draw_file_list(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect)
     let tree_widget = match Tree::new(items) {
         Ok(tree) => tree
             .block(
-                Block::default().title(" Files ").borders(Borders::ALL).border_style(border_style),
+                Block::default()
+                    .borders(Borders::RIGHT)
+                    .border_style(Style::default().fg(Color::DarkGray))
+                    .padding(Padding::new(0, 0, 1, 0)),
             )
-            .highlight_style(Style::default().add_modifier(Modifier::REVERSED))
-            .node_open_symbol("\u{25bc} ")
-            .node_closed_symbol("\u{25b6} "),
+            .highlight_style(if app.focus == Focus::FileList {
+                Style::default().bg(Color::Indexed(236))
+            } else {
+                Style::default()
+            })
+            .node_open_symbol("▾ ")
+            .node_closed_symbol("▸ "),
         Err(_) => return,
     };
 
