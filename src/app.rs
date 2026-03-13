@@ -470,11 +470,10 @@ impl App {
         if self.focus != Focus::FileList {
             return;
         }
-        let selected: Vec<String> = self.tree_state.selected().to_vec();
-        if selected.is_empty() {
+        let selected = self.tree_state.selected().to_vec();
+        let Some(id) = selected.last() else {
             return;
-        }
-        let id = selected.last().unwrap();
+        };
         let info = self.path_map.get(id).cloned();
         if let Some((path, is_dir)) = info {
             if is_dir {
@@ -565,14 +564,8 @@ impl App {
         match key.code {
             KeyCode::Esc => {
                 // Cancel search, restore full list.
-                self.search_active = false;
-                self.search_query.clear();
-                self.search_matches.clear();
-                self.search_current = 0;
-                self.filtered_tree_items = None;
-                self.filtered_path_map = None;
+                self.clear_search();
                 self.mode = AppMode::Normal;
-                self.status_message.clear();
             }
             KeyCode::Enter => {
                 // Confirm search.
