@@ -169,7 +169,7 @@ impl App {
 
         match std::fs::read_to_string(path) {
             Ok(content) => {
-                let rendered = render_markdown(&content);
+                let rendered = render_markdown(&content, None);
                 self.document.rendered_lines = rendered.lines;
                 self.document.file_content = content;
                 self.document.current_file = Some(path.to_path_buf());

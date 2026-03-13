@@ -670,6 +670,7 @@ dependencies = [
  "syntect",
  "terminal-colorsaurus",
  "tui-tree-widget",
+ "unicode-segmentation",
  "unicode-width",
 ]
 

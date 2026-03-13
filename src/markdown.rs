@@ -13,13 +13,14 @@ use syntect::parsing::SyntaxSet;
 use syntect::parsing::{ParseState, Scope, ScopeStack};
 use syntect::util::LinesWithEndings;
 use unicode_width::UnicodeWidthStr;
+use unicode_segmentation::UnicodeSegmentation;
 
 /// Render markdown input into styled ratatui [`Text`].
 ///
 /// - Pre-expands tabs to 4 spaces (ratatui `Paragraph` silently drops tabs).
 /// - Respects the `NO_COLOR` environment variable: when set, returns plain unstyled text.
 /// - All markdown syntax markers are stripped; styling is applied via ratatui modifiers/colors.
-pub fn render_markdown(input: &str) -> Text<'static> {
+pub fn render_markdown(input: &str, available_width: Option<usize>) -> Text<'static> {
     let cleaned = input.replace('\t', "    ");
 
     if std::env::var("NO_COLOR").is_ok() {
@@ -30,9 +31,203 @@ pub fn render_markdown(input: &str) -> Text<'static> {
         Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS | Options::ENABLE_TABLES;
     let parser = Parser::new_ext(&cleaned, options);
 
-    let mut renderer = Renderer::new();
+    let mut renderer = Renderer::new(available_width);
     renderer.run(parser);
     renderer.into_text()
+}
+
+#[allow(dead_code)] // Will be used by render_markdown width-aware path
+/// Word-wrap a slice of styled [`Span`]s to fit within `max_width` columns.
+///
+/// Returns a `Vec` of visual lines, each a `Vec<Span>`. Styles are preserved
+/// across split points — when a span must be broken, both halves retain the
+/// original style. Trailing whitespace at wrap boundaries is trimmed.
+///
+/// Special cases:
+/// - Empty input returns `vec![vec![]]`.
+/// - `max_width == 0` returns one line per grapheme cluster (or `vec![vec![]]` if empty).
+fn wrap_spans(spans: &[Span], max_width: usize) -> Vec<Vec<Span<'static>>> {
+    if spans.is_empty() {
+        return vec![vec![]];
+    }
+
+    // Handle max_width == 0: one grapheme per line.
+    if max_width == 0 {
+        let mut lines: Vec<Vec<Span<'static>>> = Vec::new();
+        for span in spans {
+            for g in span.content.graphemes(true) {
+                let w = UnicodeWidthStr::width(g);
+                if w > 0 {
+                    lines.push(vec![Span::styled(g.to_string(), span.style)]);
+                }
+            }
+        }
+        if lines.is_empty() {
+            return vec![vec![]];
+        }
+        return lines;
+    }
+
+    // Collect all graphemes with their style and display width.
+    struct Grapheme {
+        text: String,
+        style: Style,
+        width: usize,
+    }
+
+    let mut graphemes: Vec<Grapheme> = Vec::new();
+    for span in spans {
+        for g in span.content.graphemes(true) {
+            graphemes.push(Grapheme {
+                text: g.to_string(),
+                style: span.style,
+                width: UnicodeWidthStr::width(g),
+            });
+        }
+    }
+
+    // Split graphemes into words (whitespace-delimited chunks).
+    // Each word is a run of non-whitespace graphemes, and whitespace is kept as
+    // separate single-grapheme "words" so we can decide whether to emit or trim them.
+    struct Word {
+        graphemes: Vec<Grapheme>,
+        width: usize,
+        is_whitespace: bool,
+    }
+
+    let mut words: Vec<Word> = Vec::new();
+    let mut i = 0;
+    while i < graphemes.len() {
+        let is_ws = graphemes[i].text.chars().all(char::is_whitespace);
+        if is_ws {
+            // Each whitespace grapheme is its own word for trimming control.
+            words.push(Word {
+                width: graphemes[i].width,
+                is_whitespace: true,
+                graphemes: vec![],  // placeholder, replaced below
+            });
+            // Move the grapheme out efficiently.
+            let g = std::mem::replace(&mut graphemes[i], Grapheme {
+                text: String::new(),
+                style: Style::default(),
+                width: 0,
+            });
+            words.last_mut().unwrap().graphemes = vec![g];
+            i += 1;
+        } else {
+            // Accumulate non-whitespace graphemes into one word.
+            let mut word_gs = Vec::new();
+            let mut w = 0;
+            while i < graphemes.len() && !graphemes[i].text.chars().all(char::is_whitespace) {
+                let g = std::mem::replace(&mut graphemes[i], Grapheme {
+                    text: String::new(),
+                    style: Style::default(),
+                    width: 0,
+                });
+                w += g.width;
+                word_gs.push(g);
+                i += 1;
+            }
+            words.push(Word {
+                graphemes: word_gs,
+                width: w,
+                is_whitespace: false,
+            });
+        }
+    }
+
+    // Lay out words into lines respecting max_width.
+    let mut lines: Vec<Vec<Span<'static>>> = Vec::new();
+    let mut cur_spans: Vec<Span<'static>> = Vec::new();
+    let mut cur_width: usize = 0;
+
+    // Helper: push graphemes into cur_spans, merging consecutive same-style runs.
+    fn push_graphemes(
+        cur_spans: &mut Vec<Span<'static>>,
+        gs: &[Grapheme],
+    ) {
+        for g in gs {
+            if let Some(last) = cur_spans.last_mut() {
+                if last.style == g.style {
+                    // Merge into existing span.
+                    last.content = std::borrow::Cow::Owned(
+                        format!("{}{}", last.content, g.text),
+                    );
+                    continue;
+                }
+            }
+            cur_spans.push(Span::styled(g.text.clone(), g.style));
+        }
+    }
+
+    fn flush_line(
+        lines: &mut Vec<Vec<Span<'static>>>,
+        cur_spans: &mut Vec<Span<'static>>,
+        cur_width: &mut usize,
+    ) {
+        // Trim trailing whitespace from the last span.
+        if let Some(last) = cur_spans.last_mut() {
+            let trimmed = last.content.trim_end().to_string();
+            if trimmed.is_empty() {
+                cur_spans.pop();
+            } else {
+                last.content = std::borrow::Cow::Owned(trimmed);
+            }
+        }
+        lines.push(std::mem::take(cur_spans));
+        *cur_width = 0;
+    }
+
+    for word in &words {
+        if word.is_whitespace {
+            // Only emit whitespace if it fits and we're not at line start.
+            if cur_width > 0 && cur_width + word.width <= max_width {
+                push_graphemes(&mut cur_spans, &word.graphemes);
+                cur_width += word.width;
+            }
+            // Otherwise skip (trim at boundaries).
+            continue;
+        }
+
+        // Non-whitespace word.
+        if word.width <= max_width {
+            // Word fits on a line.
+            if cur_width + word.width <= max_width {
+                // Fits on current line.
+                push_graphemes(&mut cur_spans, &word.graphemes);
+                cur_width += word.width;
+            } else {
+                // Wrap: start new line.
+                flush_line(&mut lines, &mut cur_spans, &mut cur_width);
+                push_graphemes(&mut cur_spans, &word.graphemes);
+                cur_width += word.width;
+            }
+        } else {
+            // Word too wide — character-wrap it.
+            for g in &word.graphemes {
+                // CJK handling: if a double-width char would leave 1 col, move to next line.
+                if g.width == 2 && cur_width + 2 > max_width {
+                    flush_line(&mut lines, &mut cur_spans, &mut cur_width);
+                }
+                if cur_width + g.width > max_width {
+                    flush_line(&mut lines, &mut cur_spans, &mut cur_width);
+                }
+                push_graphemes(&mut cur_spans, std::slice::from_ref(g));
+                cur_width += g.width;
+            }
+        }
+    }
+
+    // Don't forget the last line.
+    if !cur_spans.is_empty() {
+        flush_line(&mut lines, &mut cur_spans, &mut cur_width);
+    }
+
+    if lines.is_empty() {
+        vec![vec![]]
+    } else {
+        lines
+    }
 }
 
 // ── Styles ──────────────────────────────────────────────────────────────────
@@ -212,6 +407,9 @@ struct Renderer {
     needs_newline: bool,
     /// Current link destination (Some while inside a link).
     link_dest: Option<String>,
+    /// Available terminal width for wrapping (None = no wrapping).
+    #[allow(dead_code)] // Will be used by width-aware render path
+    available_width: Option<usize>,
     /// Whether we're inside a heading (to apply heading style to all text).
     in_heading: bool,
     /// Whether we're inside a table.
@@ -227,7 +425,7 @@ struct Renderer {
 }
 
 impl Renderer {
-    fn new() -> Self {
+    fn new(available_width: Option<usize>) -> Self {
         Self {
             lines: Vec::new(),
             current_spans: Vec::new(),
@@ -240,6 +438,7 @@ impl Renderer {
             pending_list_marker: false,
             needs_newline: false,
             link_dest: None,
+            available_width,
             in_heading: false,
             in_table: false,
             table_alignments: Vec::new(),
@@ -853,9 +1052,23 @@ mod tests {
             .collect()
     }
 
+    /// Render markdown with a specific width constraint.
+    fn render_at_width(input: &str, width: usize) -> Text<'static> {
+        render_markdown(input, Some(width))
+    }
+
+    /// Return the maximum visual width across all lines in a `Text`.
+    fn max_line_width(text: &Text) -> usize {
+        text.lines
+            .iter()
+            .map(|l| l.spans.iter().map(|s| s.content.width()).sum::<usize>())
+            .max()
+            .unwrap_or(0)
+    }
+
     #[test]
     fn headings_stripped_and_styled() {
-        let text = render_markdown("# Heading 1\n\n## Heading 2\n\n### Heading 3\n");
+        let text = render_markdown("# Heading 1\n\n## Heading 2\n\n### Heading 3\n", None);
         let content = text_content(&text);
 
         // No "#" markers visible.
@@ -876,7 +1089,7 @@ mod tests {
 
     #[test]
     fn bold_italic_strikethrough_styled() {
-        let text = render_markdown("**bold** *italic* ~~struck~~\n");
+        let text = render_markdown("**bold** *italic* ~~struck~~\n", None);
         let content = text_content(&text);
         let joined = content.join(" ");
 
@@ -902,7 +1115,7 @@ mod tests {
 
     #[test]
     fn inline_code_no_backticks() {
-        let text = render_markdown("Use `code` here\n");
+        let text = render_markdown("Use `code` here\n", None);
         let content = text_content(&text);
         let joined = content.join(" ");
         assert!(!joined.contains('`'), "Backtick visible in: {joined}");
@@ -911,7 +1124,7 @@ mod tests {
 
     #[test]
     fn code_block_no_fences() {
-        let text = render_markdown("```rust\nfn main() {}\n```\n");
+        let text = render_markdown("```rust\nfn main() {}\n```\n", None);
         let content = text_content(&text);
         let joined = content.join("\n");
         assert!(!joined.contains("```"), "Code fence visible in:\n{joined}");
@@ -923,7 +1136,7 @@ mod tests {
 
     #[test]
     fn unordered_list_bullets() {
-        let text = render_markdown("- item 1\n- item 2\n");
+        let text = render_markdown("- item 1\n- item 2\n", None);
         let content = text_content(&text);
         let joined = content.join("\n");
         assert!(!joined.contains("- item"), "Dash marker visible");
@@ -934,7 +1147,7 @@ mod tests {
 
     #[test]
     fn ordered_list_numbers() {
-        let text = render_markdown("1. first\n2. second\n");
+        let text = render_markdown("1. first\n2. second\n", None);
         let content = text_content(&text);
         let joined = content.join("\n");
         assert!(joined.contains("1."), "Ordered number missing");
@@ -944,7 +1157,7 @@ mod tests {
 
     #[test]
     fn blockquote_styled() {
-        let text = render_markdown("> quoted text\n");
+        let text = render_markdown("> quoted text\n", None);
         let content = text_content(&text);
         let joined = content.join("\n");
         assert!(!joined.starts_with("> "), "Raw blockquote marker visible");
@@ -954,7 +1167,7 @@ mod tests {
 
     #[test]
     fn horizontal_rule() {
-        let text = render_markdown("---\n");
+        let text = render_markdown("---\n", None);
         let content = text_content(&text);
         let joined = content.join("\n");
         assert!(!joined.contains("---"), "Raw HR marker visible");
@@ -963,7 +1176,7 @@ mod tests {
 
     #[test]
     fn links_styled() {
-        let text = render_markdown("[click here](https://example.com)\n");
+        let text = render_markdown("[click here](https://example.com)\n", None);
         let content = text_content(&text);
         let joined = content.join(" ");
         assert!(joined.contains("click here"), "Link text missing");
@@ -973,7 +1186,7 @@ mod tests {
 
     #[test]
     fn task_list_checkboxes() {
-        let text = render_markdown("- [ ] unchecked\n- [x] checked\n");
+        let text = render_markdown("- [ ] unchecked\n- [x] checked\n", None);
         let content = text_content(&text);
         let joined = content.join("\n");
         assert!(joined.contains('☐'), "Unchecked box missing");
@@ -984,7 +1197,7 @@ mod tests {
 
     #[test]
     fn tabs_expanded() {
-        let text = render_markdown("\tindented\n");
+        let text = render_markdown("\tindented\n", None);
         for line in &text.lines {
             for span in &line.spans {
                 assert!(!span.content.contains('\t'), "Tab not expanded");
@@ -994,19 +1207,19 @@ mod tests {
 
     #[test]
     fn empty_input() {
-        let text = render_markdown("");
+        let text = render_markdown("", None);
         let _ = text; // Must not panic.
     }
 
     #[test]
     fn whitespace_only() {
-        let text = render_markdown("   \n\n   \n");
+        let text = render_markdown("   \n\n   \n", None);
         let _ = text; // Must not panic.
     }
 
     #[test]
     fn nested_list_indentation() {
-        let text = render_markdown("- outer\n  - inner\n    - deep\n");
+        let text = render_markdown("- outer\n  - inner\n    - deep\n", None);
         let content = text_content(&text);
 
         // Inner items should have more indentation.
@@ -1093,7 +1306,7 @@ mod tests {
 
     #[test]
     fn scope_render_markdown_code_block_uses_ansi_colors() {
-        let text = render_markdown("```rust\nfn main() { let x = 42; }\n```\n");
+        let text = render_markdown("```rust\nfn main() { let x = 42; }\n```\n", None);
         for line in &text.lines {
             for span in &line.spans {
                 if let Some(fg) = span.style.fg {
@@ -1113,7 +1326,7 @@ mod tests {
     #[test]
     fn table_renders_with_borders() {
         let input = "| Key | Action |\n|---|---|\n| j/k | Navigate |\n| Enter | Open file |\n";
-        let text = render_markdown(input);
+        let text = render_markdown(input, None);
         let content = text_content(&text);
         let joined = content.join("\n");
         assert!(joined.contains('┌'), "Missing table top border");
@@ -1126,7 +1339,7 @@ mod tests {
     #[test]
     fn table_header_is_bold() {
         let input = "| Name | Value |\n|---|---|\n| a | b |\n";
-        let text = render_markdown(input);
+        let text = render_markdown(input, None);
         // Find the line containing "Name" and check it has bold
         for line in &text.lines {
             for span in &line.spans {
@@ -1143,14 +1356,14 @@ mod tests {
     #[test]
     fn table_empty_does_not_panic() {
         let input = "| |\n|---|\n| |\n";
-        let text = render_markdown(input);
+        let text = render_markdown(input, None);
         let _ = text; // Must not panic
     }
 
     #[test]
     fn table_with_inline_code() {
         let input = "| Command | Description |\n|---|---|\n| `ls` | List files |\n";
-        let text = render_markdown(input);
+        let text = render_markdown(input, None);
         let content = text_content(&text);
         let joined = content.join("\n");
         assert!(joined.contains("ls"), "Inline code content missing in table");
@@ -1160,11 +1373,137 @@ mod tests {
     #[test]
     fn table_separator_between_header_and_body() {
         let input = "| A | B |\n|---|---|\n| 1 | 2 |\n";
-        let text = render_markdown(input);
+        let text = render_markdown(input, None);
         let content = text_content(&text);
         let joined = content.join("\n");
         assert!(joined.contains('├'), "Missing header separator left");
         assert!(joined.contains('┼'), "Missing header separator cross");
         assert!(joined.contains('┤'), "Missing header separator right");
+    }
+
+    // ── wrap_spans tests ───────────────────────────────────────────────
+
+    /// Helper: collect text content from wrap_spans output lines.
+    fn wrap_lines_content(lines: &[Vec<Span<'_>>]) -> Vec<String> {
+        lines
+            .iter()
+            .map(|line| line.iter().map(|s| s.content.as_ref()).collect::<String>())
+            .collect()
+    }
+
+    #[test]
+    fn wrap_spans_basic_word_wrap() {
+        let spans = vec![Span::raw("hello world foo")];
+        let lines = wrap_spans(&spans, 10);
+        let content = wrap_lines_content(&lines);
+        assert_eq!(content.len(), 2);
+        assert!(content[0].len() <= 10, "first line too wide: {:?}", content[0]);
+        assert!(content[1].len() <= 10, "second line too wide: {:?}", content[1]);
+        assert_eq!(content[0], "hello");
+        assert_eq!(content[1], "world foo");
+    }
+
+    #[test]
+    fn wrap_spans_character_wrap() {
+        let spans = vec![Span::raw("abcdefghij")];
+        let lines = wrap_spans(&spans, 5);
+        let content = wrap_lines_content(&lines);
+        assert_eq!(content, vec!["abcde", "fghij"]);
+    }
+
+    #[test]
+    fn wrap_spans_style_preservation() {
+        let style = Style::new().add_modifier(Modifier::BOLD);
+        let spans = vec![Span::styled("abcdefghij", style)];
+        let lines = wrap_spans(&spans, 5);
+        assert_eq!(lines.len(), 2);
+        // Both halves must retain BOLD.
+        for line in &lines {
+            for span in line {
+                assert!(
+                    span.style.add_modifier.contains(Modifier::BOLD),
+                    "Style lost after split: {:?}",
+                    span
+                );
+            }
+        }
+        let content = wrap_lines_content(&lines);
+        assert_eq!(content, vec!["abcde", "fghij"]);
+    }
+
+    #[test]
+    fn wrap_spans_multi_span() {
+        let spans = vec![
+            Span::raw("hello "),
+            Span::styled("world", Style::new().add_modifier(Modifier::BOLD)),
+        ];
+        let lines = wrap_spans(&spans, 5);
+        let content = wrap_lines_content(&lines);
+        assert_eq!(content.len(), 2);
+        assert_eq!(content[0], "hello");
+        assert_eq!(content[1], "world");
+        // "world" should be bold.
+        let world_span = &lines[1][0];
+        assert!(world_span.style.add_modifier.contains(Modifier::BOLD));
+    }
+
+    #[test]
+    fn wrap_spans_empty_input() {
+        let result = wrap_spans(&[], 80);
+        assert_eq!(result, vec![vec![] as Vec<Span<'static>>]);
+    }
+
+    #[test]
+    fn wrap_spans_width_exact() {
+        let spans = vec![Span::raw("12345")];
+        let lines = wrap_spans(&spans, 5);
+        let content = wrap_lines_content(&lines);
+        assert_eq!(content.len(), 1);
+        assert_eq!(content[0], "12345");
+    }
+
+    #[test]
+    fn wrap_spans_trailing_whitespace() {
+        // "hello " followed by "world" — at width 6, "hello" fits (5 chars),
+        // the trailing space should be trimmed, and "world" on next line.
+        let spans = vec![Span::raw("hello world")];
+        let lines = wrap_spans(&spans, 6);
+        let content = wrap_lines_content(&lines);
+        assert_eq!(content.len(), 2);
+        assert!(!content[0].ends_with(' '), "trailing space not trimmed: {:?}", content[0]);
+        assert!(!content[1].starts_with(' '), "leading space on wrapped line: {:?}", content[1]);
+    }
+
+    #[test]
+    fn wrap_spans_multiple_spaces() {
+        let spans = vec![Span::raw("a  b")];
+        let lines = wrap_spans(&spans, 10);
+        let content = wrap_lines_content(&lines);
+        // Should fit on one line; consecutive spaces preserved when they fit.
+        assert_eq!(content.len(), 1);
+        assert_eq!(content[0], "a  b");
+    }
+
+    #[test]
+    fn wrap_spans_already_short() {
+        let spans = vec![Span::raw("hi")];
+        let lines = wrap_spans(&spans, 80);
+        let content = wrap_lines_content(&lines);
+        assert_eq!(content.len(), 1);
+        assert_eq!(content[0], "hi");
+    }
+
+    #[test]
+    fn wrap_spans_zero_width() {
+        let spans = vec![Span::raw("abc")];
+        let lines = wrap_spans(&spans, 0);
+        let content = wrap_lines_content(&lines);
+        assert_eq!(content, vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn wrap_spans_zero_width_empty() {
+        let result = wrap_spans(&[], 0);
+        assert_eq!(result, vec![vec![] as Vec<Span<'static>>]);
     }
 }
