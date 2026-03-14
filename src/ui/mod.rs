@@ -10,6 +10,7 @@ use ratatui::Frame;
 use tui_tree_widget::Tree;
 
 use crate::app::{App, Focus};
+use crate::markdown::LinkInfo;
 
 /// Draw the full UI: file list | preview, plus status bar.
 pub fn draw(frame: &mut Frame, app: &mut App) {
@@ -45,10 +46,23 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     if app.show_help {
         draw_help_overlay(frame, frame.area(), app.bg_color);
     }
+
+    if app.show_links {
+        let filtered_indices = app.filtered_link_indices();
+        let filtered_links: Vec<&LinkInfo> =
+            filtered_indices.iter().filter_map(|&i| app.document.links.get(i)).collect();
+        draw_links_overlay(
+            frame,
+            frame.area(),
+            &filtered_links,
+            app.link_picker_selected,
+            &app.link_search_query,
+            app.bg_color,
+        );
+    }
 }
 
 fn draw_file_list(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect) {
-
     // Use filtered tree items if file search is active, otherwise full tree.
     let items = if let Some(ref filtered) = app.tree.filtered_tree_items {
         filtered
@@ -125,6 +139,7 @@ fn draw_help_overlay(frame: &mut Frame, area: Rect, bg_color: Color) {
         Line::from("  Ctrl+d/u  Half page down/up"),
         Line::from("  :w        Save"),
         Line::from("  :q        Quit"),
+        Line::from("  o         Open links"),
         Line::from("  ?         This help"),
         Line::from("  Esc       Close / Clear"),
         Line::from(""),
@@ -135,6 +150,84 @@ fn draw_help_overlay(frame: &mut Frame, area: Rect, bg_color: Color) {
             .title(" Help ")
             .borders(Borders::ALL)
             .border_style(Style::default().fg(Color::White))
+            .style(Style::default().bg(bg_color)),
+    );
+
+    frame.render_widget(popup, popup_area);
+}
+
+fn draw_links_overlay(
+    frame: &mut Frame,
+    area: Rect,
+    links: &[&LinkInfo],
+    selected: usize,
+    search_query: &str,
+    bg_color: Color,
+) {
+    let content_width = links
+        .iter()
+        .map(|l| l.display_text.len() + l.url.len() + 4)
+        .max()
+        .unwrap_or(20)
+        .max(search_query.len() + 15)
+        .min(60);
+    let popup_width = (content_width as u16 + 4).min(area.width.saturating_sub(4));
+    let content_rows = links.len().max(1);
+    let popup_height = (content_rows as u16 + 4).min(area.height.saturating_sub(4));
+
+    let popup_area = centered_rect(popup_width, popup_height, area);
+
+    frame.render_widget(Clear, popup_area);
+    frame.render_widget(Block::default().style(Style::default().bg(bg_color)), popup_area);
+
+    let mut text_lines: Vec<Line> = Vec::new();
+    text_lines.push(Line::from(""));
+
+    if links.is_empty() {
+        text_lines.push(Line::from(Span::styled(
+            " No matching links",
+            Style::default().fg(Color::DarkGray),
+        )));
+    } else {
+        let visible_height = popup_height.saturating_sub(4) as usize;
+        let scroll_offset =
+            if selected >= visible_height { selected - visible_height + 1 } else { 0 };
+
+        for (i, link) in links.iter().enumerate().skip(scroll_offset).take(visible_height) {
+            let display = if link.display_text == link.url {
+                link.url.clone()
+            } else {
+                format!("{} → {}", link.display_text, link.url)
+            };
+            let max_text_width = popup_width.saturating_sub(4) as usize;
+            let truncated = if display.len() > max_text_width {
+                format!("{}…", &display[..max_text_width.saturating_sub(1)])
+            } else {
+                display
+            };
+
+            if i == selected {
+                text_lines.push(Line::from(Span::styled(
+                    format!(" {} ", truncated),
+                    Style::default().bg(Color::Indexed(236)).add_modifier(Modifier::BOLD),
+                )));
+            } else {
+                text_lines.push(Line::from(format!(" {} ", truncated)));
+            }
+        }
+    }
+
+    let title = if search_query.is_empty() {
+        " Links (type to filter ↕ Enter ↵ Esc ✕) ".to_string()
+    } else {
+        format!(" Links: {}█ ", search_query)
+    };
+
+    let popup = Paragraph::new(Text::from(text_lines)).block(
+        Block::default()
+            .title(title)
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::Cyan))
             .style(Style::default().bg(bg_color)),
     );
 

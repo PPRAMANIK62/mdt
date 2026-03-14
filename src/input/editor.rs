@@ -106,7 +106,7 @@ impl App {
             Ok(()) => {
                 // Update stored content and re-render markdown preview.
                 self.document.file_content = content;
-                let blocks = render_markdown_blocks(&self.document.file_content);
+                let (blocks, links) = render_markdown_blocks(&self.document.file_content);
                 let width = if self.document.viewport_width > 0 {
                     Some(self.document.viewport_width)
                 } else {
@@ -114,6 +114,7 @@ impl App {
                 };
                 self.document.rendered_lines = rewrap_blocks(&blocks, width);
                 self.document.rendered_blocks = blocks;
+                self.document.links = links;
                 self.editor.is_dirty = false;
 
                 self.status_message = "written".to_string();

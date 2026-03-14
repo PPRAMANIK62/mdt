@@ -17,10 +17,11 @@ mod wrap;
 use syntax::no_color;
 mod renderer;
 mod theme;
-use theme::*;
 use renderer::Renderer;
+use theme::*;
 
 pub(crate) use blocks::{rewrap_blocks, RenderedBlock};
+pub(crate) use renderer::LinkInfo;
 
 #[cfg(test)]
 mod test_helpers;
@@ -31,7 +32,10 @@ mod test_helpers;
 /// - Respects the `NO_COLOR` environment variable: when set, returns plain unstyled text.
 /// - All markdown syntax markers are stripped; styling is applied via ratatui modifiers/colors.
 #[cfg(test)]
-pub fn render_markdown(input: &str, available_width: Option<usize>) -> ratatui::text::Text<'static> {
+pub fn render_markdown(
+    input: &str,
+    available_width: Option<usize>,
+) -> ratatui::text::Text<'static> {
     use ratatui::text::Text;
     let cleaned = input.replace('\t', "    ");
 
@@ -39,7 +43,7 @@ pub fn render_markdown(input: &str, available_width: Option<usize>) -> ratatui::
         return Text::raw(cleaned);
     }
 
-    let blocks = render_markdown_blocks(input);
+    let (blocks, _links) = render_markdown_blocks(input);
     let lines = rewrap_blocks(&blocks, available_width);
     Text::from(lines)
 }
@@ -49,18 +53,21 @@ pub fn render_markdown(input: &str, available_width: Option<usize>) -> ratatui::
 /// This is the expensive "phase 1" of the split pipeline — parses markdown and
 /// syntax-highlights all code blocks. The result can be cached and cheaply re-wrapped
 /// to different widths via [`rewrap_blocks`].
-pub(crate) fn render_markdown_blocks(input: &str) -> Vec<RenderedBlock> {
+pub(crate) fn render_markdown_blocks(input: &str) -> (Vec<RenderedBlock>, Vec<LinkInfo>) {
     let cleaned = input.replace('\t', "    ");
 
     if no_color() {
-        return cleaned
-            .lines()
-            .map(|l| RenderedBlock::StyledLine {
-                spans: vec![Span::raw(l.to_string())],
-                blockquote_depth: 0,
-                list_marker_width: 0,
-            })
-            .collect();
+        return (
+            cleaned
+                .lines()
+                .map(|l| RenderedBlock::StyledLine {
+                    spans: vec![Span::raw(l.to_string())],
+                    blockquote_depth: 0,
+                    list_marker_width: 0,
+                })
+                .collect(),
+            Vec::new(),
+        );
     }
 
     let options =
@@ -192,8 +199,19 @@ mod tests {
         let content = text_content(&text);
         let joined = content.join(" ");
         assert!(joined.contains("click here"), "Link text missing");
-        assert!(joined.contains("https://example.com"), "URL missing");
+        assert!(
+            !joined.contains("https://example.com"),
+            "URL should be hidden when display text differs"
+        );
         assert!(!joined.contains('['), "Link bracket visible");
+    }
+
+    #[test]
+    fn autolink_shows_url() {
+        let text = render_markdown("<https://example.com>\n", None);
+        let content = text_content(&text);
+        let joined = content.join(" ");
+        assert!(joined.contains("https://example.com"), "Autolink URL should be visible");
     }
 
     #[test]

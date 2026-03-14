@@ -63,11 +63,22 @@ pub fn draw_preview(frame: &mut Frame, app: &mut App, area: Rect) {
     let text = if search_active {
         // Search active: clone lines and apply highlighting in a single pass.
         let highlight_style = Style::default().bg(Color::Yellow).fg(Color::Black);
+        let active_style = Style::default().bg(Color::LightRed).fg(Color::Black);
         let query_lower = app.search.query.to_lowercase();
+        let current_match_line = app.search.matches.get(app.search.current).copied();
         Text::from(
             visible_slice
                 .iter()
-                .map(|line| highlight_line(line.clone(), &query_lower, highlight_style))
+                .enumerate()
+                .map(|(i, line)| {
+                    let abs_line = app.document.scroll_offset + i;
+                    let style = if current_match_line == Some(abs_line) {
+                        active_style
+                    } else {
+                        highlight_style
+                    };
+                    highlight_line(line.clone(), &query_lower, style)
+                })
                 .collect::<Vec<_>>(),
         )
     } else {

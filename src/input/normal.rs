@@ -1,5 +1,5 @@
-use std::time::Instant;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use std::time::Instant;
 
 use crate::app::{App, AppMode, Focus};
 /// Timeout in milliseconds for composed key sequences (e.g., `gg`, `Space+e`).
@@ -119,8 +119,18 @@ impl App {
                     self.enter_editor();
                 }
             }
+            KeyCode::Char('o') => {
+                if self.focus == Focus::Preview {
+                    if self.document.links.is_empty() {
+                        self.status_message = "No links in document".to_string();
+                    } else {
+                        self.show_links = true;
+                        self.link_picker_selected = 0;
+                        self.link_search_query.clear();
+                    }
+                }
+            }
 
-            // --- Quit ---
             // --- Help ---
             KeyCode::Char('?') => {
                 if self.editor.textarea.is_none() {
@@ -153,7 +163,6 @@ impl App {
         }
     }
 
-
     pub(crate) fn toggle_focus(&mut self) {
         self.focus = match self.focus {
             Focus::FileList => Focus::Preview,
@@ -169,8 +178,7 @@ impl App {
             self.focus = Focus::Preview;
         }
     }
-
-    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -212,5 +220,4 @@ mod tests {
         assert_eq!(app.mode, AppMode::Command);
         assert!(app.command_buffer.is_empty());
     }
-
-    }
+}

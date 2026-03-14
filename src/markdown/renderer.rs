@@ -9,6 +9,13 @@ use super::blocks::RenderedBlock;
 use super::syntax::highlight_code;
 use super::theme::*;
 
+/// Metadata for a link found in the markdown document.
+#[derive(Clone, Debug)]
+pub struct LinkInfo {
+    pub display_text: String,
+    pub url: String,
+}
+
 pub(super) struct Renderer {
     pub(super) blocks: Vec<RenderedBlock>,
     pub(super) current_spans: Vec<Span<'static>>,
@@ -29,6 +36,10 @@ pub(super) struct Renderer {
     pub(super) needs_newline: bool,
     /// Current link destination (Some while inside a link).
     pub(super) link_dest: Option<String>,
+    /// Accumulated display text inside the current link (for comparison with URL).
+    pub(super) link_text: String,
+    /// Collected link metadata for the document.
+    pub(super) link_infos: Vec<LinkInfo>,
     /// Whether we're inside a heading (to apply heading style to all text).
     /// Width of the current list marker (indent + bullet/number) for hanging indent.
     pub(super) list_marker_width: usize,
@@ -59,6 +70,8 @@ impl Renderer {
             pending_list_marker: false,
             needs_newline: false,
             link_dest: None,
+            link_text: String::new(),
+            link_infos: Vec::new(),
             in_heading: false,
             in_table: false,
             table_alignments: Vec::new(),
@@ -76,8 +89,8 @@ impl Renderer {
         self.flush_line();
     }
 
-    pub(super) fn into_blocks(self) -> Vec<RenderedBlock> {
-        self.blocks
+    pub(super) fn into_blocks(self) -> (Vec<RenderedBlock>, Vec<LinkInfo>) {
+        (self.blocks, self.link_infos)
     }
 
     // ── Event dispatch ──────────────────────────────────────────────────
@@ -168,6 +181,7 @@ impl Renderer {
             }
             Tag::Link { dest_url, .. } => {
                 self.link_dest = Some(dest_url.to_string());
+                self.link_text.clear();
                 self.push_merged_style(LINK_STYLE);
             }
             Tag::Table(alignments) => {
@@ -236,11 +250,13 @@ impl Renderer {
             }
             TagEnd::Link => {
                 self.style_stack.pop();
-                if let Some(dest) = self.link_dest.take() {
-                    if !dest.is_empty() {
-                        let url_span =
-                            Span::styled(format!(" ({})", dest), Style::new().fg(Color::DarkGray));
-                        self.current_spans.push(url_span);
+                let text = std::mem::take(&mut self.link_text);
+                if let Some(url) = self.link_dest.take() {
+                    if !url.is_empty() {
+                        self.link_infos.push(LinkInfo {
+                            display_text: if text.is_empty() { url.clone() } else { text },
+                            url,
+                        });
                     }
                 }
             }
@@ -297,6 +313,10 @@ impl Renderer {
 
         let style = self.current_style();
 
+        if self.link_dest.is_some() {
+            self.link_text.push_str(text);
+        }
+
         // If there's a pending list marker, emit it first.
         if self.pending_list_marker {
             self.emit_list_marker();
@@ -315,6 +335,9 @@ impl Renderer {
     }
 
     fn on_inline_code(&mut self, code: &str) {
+        if self.link_dest.is_some() {
+            self.link_text.push_str(code);
+        }
         if self.pending_list_marker {
             self.emit_list_marker();
             self.pending_list_marker = false;

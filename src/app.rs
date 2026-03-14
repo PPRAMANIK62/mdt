@@ -10,7 +10,7 @@ use ratatui_textarea::TextArea;
 use tui_tree_widget::{TreeItem, TreeState};
 
 use crate::file_tree;
-use crate::markdown::{render_markdown_blocks, rewrap_blocks, RenderedBlock};
+use crate::markdown::{render_markdown_blocks, rewrap_blocks, LinkInfo, RenderedBlock};
 
 /// Current input mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -71,6 +71,7 @@ pub(crate) struct DocumentState {
     pub(crate) viewport_height: usize,
     pub(crate) viewport_width: usize,
     pub(crate) rendered_blocks: Vec<RenderedBlock>,
+    pub(crate) links: Vec<LinkInfo>,
 }
 
 impl DocumentState {
@@ -129,6 +130,9 @@ pub struct App {
     pub(crate) pending_key: Option<(char, Instant)>,
     pub(crate) command_buffer: String,
     pub(crate) show_help: bool,
+    pub(crate) show_links: bool,
+    pub(crate) link_picker_selected: usize,
+    pub(crate) link_search_query: String,
     pub(crate) show_file_tree: bool,
     pub(crate) bg_color: ratatui::style::Color,
     pub(crate) root_path: PathBuf,
@@ -156,6 +160,7 @@ impl App {
                 file_content: String::new(),
                 rendered_lines: Vec::new(),
                 rendered_blocks: Vec::new(),
+                links: Vec::new(),
                 scroll_offset: 0,
                 viewport_height: 0,
                 viewport_width: 0,
@@ -174,6 +179,9 @@ impl App {
             pending_key: None,
             command_buffer: String::new(),
             show_help: false,
+            show_links: false,
+            link_picker_selected: 0,
+            link_search_query: String::new(),
             show_file_tree: true,
             bg_color,
             root_path,
@@ -190,6 +198,49 @@ impl App {
 
         match self.mode {
             AppMode::Normal => {
+                // Link picker overlay — handles its own keys.
+                if self.show_links {
+                    match key.code {
+                        KeyCode::Down => {
+                            let filtered = self.filtered_link_indices();
+                            if !filtered.is_empty() {
+                                self.link_picker_selected =
+                                    (self.link_picker_selected + 1) % filtered.len();
+                            }
+                        }
+                        KeyCode::Up => {
+                            let filtered = self.filtered_link_indices();
+                            if !filtered.is_empty() {
+                                self.link_picker_selected = if self.link_picker_selected == 0 {
+                                    filtered.len().saturating_sub(1)
+                                } else {
+                                    self.link_picker_selected - 1
+                                };
+                            }
+                        }
+                        KeyCode::Enter => {
+                            self.open_selected_link();
+                        }
+                        KeyCode::Backspace => {
+                            self.link_search_query.pop();
+                            self.link_picker_selected = 0;
+                        }
+                        KeyCode::Esc => {
+                            if self.link_search_query.is_empty() {
+                                self.show_links = false;
+                            } else {
+                                self.link_search_query.clear();
+                                self.link_picker_selected = 0;
+                            }
+                        }
+                        KeyCode::Char(c) => {
+                            self.link_search_query.push(c);
+                            self.link_picker_selected = 0;
+                        }
+                        _ => {}
+                    }
+                    return;
+                }
                 // If help overlay is showing, Esc or ? dismisses it.
                 if self.show_help {
                     if key.code == KeyCode::Esc || key.code == KeyCode::Char('?') {
@@ -214,13 +265,49 @@ impl App {
         self.document
             .current_file
             .as_ref()
-            .map(|p| {
-                p.strip_prefix(&self.root_path)
-                    .unwrap_or(p)
-                    .to_string_lossy()
-                    .into_owned()
-            })
+            .map(|p| p.strip_prefix(&self.root_path).unwrap_or(p).to_string_lossy().into_owned())
             .unwrap_or_default()
+    }
+}
+
+impl App {
+    /// Return indices of links matching the current link search query.
+    pub(crate) fn filtered_link_indices(&self) -> Vec<usize> {
+        if self.link_search_query.is_empty() {
+            return (0..self.document.links.len()).collect();
+        }
+        let query = self.link_search_query.to_lowercase();
+        self.document
+            .links
+            .iter()
+            .enumerate()
+            .filter(|(_, link)| {
+                link.display_text.to_lowercase().contains(&query)
+                    || link.url.to_lowercase().contains(&query)
+            })
+            .map(|(i, _)| i)
+            .collect()
+    }
+}
+
+impl App {
+    fn open_selected_link(&mut self) {
+        let filtered = self.filtered_link_indices();
+        if let Some(&link_idx) = filtered.get(self.link_picker_selected) {
+            if let Some(link) = self.document.links.get(link_idx) {
+                let url = link.url.clone();
+                self.show_links = false;
+                self.link_search_query.clear();
+                match open::that(&url) {
+                    Ok(()) => {
+                        self.status_message = format!("Opened: {url}");
+                    }
+                    Err(e) => {
+                        self.status_message = format!("Failed to open link: {e}");
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -237,7 +324,7 @@ impl App {
 
         match std::fs::read_to_string(path) {
             Ok(content) => {
-                let blocks = render_markdown_blocks(&content);
+                let (blocks, links) = render_markdown_blocks(&content);
                 let width = if self.document.viewport_width > 0 {
                     Some(self.document.viewport_width)
                 } else {
@@ -245,6 +332,7 @@ impl App {
                 };
                 self.document.rendered_lines = rewrap_blocks(&blocks, width);
                 self.document.rendered_blocks = blocks;
+                self.document.links = links;
                 self.document.file_content = content;
                 self.document.current_file = Some(path.to_path_buf());
                 self.document.scroll_offset = 0;
