@@ -325,6 +325,7 @@ impl App {
         match std::fs::read_to_string(path) {
             Ok(content) => {
                 let (blocks, links) = render_markdown_blocks(&content);
+                let links = deduplicate_links(links);
                 let width = if self.document.viewport_width > 0 {
                     Some(self.document.viewport_width)
                 } else {
@@ -343,6 +344,41 @@ impl App {
             }
         }
     }
+}
+
+/// Convert a raw URL into a human-readable label by stripping scheme and www prefix.
+fn humanize_url(url: &str) -> String {
+    let stripped =
+        url.strip_prefix("https://").or_else(|| url.strip_prefix("http://")).unwrap_or(url);
+    let stripped = stripped.strip_prefix("www.").unwrap_or(stripped);
+    let stripped = stripped.strip_suffix('/').unwrap_or(stripped);
+    stripped.to_string()
+}
+
+/// Deduplicate links by URL, preferring entries with descriptive display text.
+pub(crate) fn deduplicate_links(links: Vec<LinkInfo>) -> Vec<LinkInfo> {
+    let mut seen: HashMap<String, usize> = HashMap::new();
+    let mut result: Vec<LinkInfo> = Vec::new();
+
+    for link in links {
+        if let Some(&idx) = seen.get(&link.url) {
+            // Replace if the existing entry is a bare URL but this one has descriptive text
+            if result[idx].display_text == result[idx].url && link.display_text != link.url {
+                result[idx] = link;
+            }
+        } else {
+            seen.insert(link.url.clone(), result.len());
+            result.push(link);
+        }
+    }
+
+    for link in &mut result {
+        if link.display_text == link.url {
+            link.display_text = humanize_url(&link.url);
+        }
+    }
+
+    result
 }
 
 #[cfg(test)]

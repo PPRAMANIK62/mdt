@@ -3,7 +3,7 @@ use ratatui::style::Style;
 use ratatui::widgets::{Block, Borders};
 use ratatui_textarea::TextArea;
 
-use crate::app::{App, AppMode};
+use crate::app::{deduplicate_links, App, AppMode};
 use crate::markdown::{render_markdown_blocks, rewrap_blocks};
 
 impl App {
@@ -114,7 +114,7 @@ impl App {
                 };
                 self.document.rendered_lines = rewrap_blocks(&blocks, width);
                 self.document.rendered_blocks = blocks;
-                self.document.links = links;
+                self.document.links = deduplicate_links(links);
                 self.editor.is_dirty = false;
 
                 self.status_message = "written".to_string();

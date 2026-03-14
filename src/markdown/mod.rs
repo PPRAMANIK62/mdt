@@ -57,17 +57,24 @@ pub(crate) fn render_markdown_blocks(input: &str) -> (Vec<RenderedBlock>, Vec<Li
     let cleaned = input.replace('\t', "    ");
 
     if no_color() {
-        return (
-            cleaned
-                .lines()
-                .map(|l| RenderedBlock::StyledLine {
-                    spans: vec![Span::raw(l.to_string())],
-                    blockquote_depth: 0,
-                    list_marker_width: 0,
-                })
-                .collect(),
-            Vec::new(),
-        );
+        // Still extract links even when color is disabled.
+        let options =
+            Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS | Options::ENABLE_TABLES;
+        let parser = Parser::new_ext(&cleaned, options);
+        let mut renderer = Renderer::new();
+        renderer.run(parser);
+        let (_styled_blocks, links) = renderer.into_blocks();
+
+        let plain_blocks = cleaned
+            .lines()
+            .map(|l| RenderedBlock::StyledLine {
+                spans: vec![Span::raw(l.to_string())],
+                blockquote_depth: 0,
+                list_marker_width: 0,
+            })
+            .collect();
+
+        return (plain_blocks, links);
     }
 
     let options =

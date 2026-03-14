@@ -7,13 +7,31 @@ pub mod welcome;
 
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
-use ratatui::text::{Line, Span, Text};
-use ratatui::widgets::{Block, Borders, Clear, Padding, Paragraph};
+use ratatui::text::{Line, Span};
+use ratatui::widgets::{Block, Borders, Padding, Paragraph};
 use ratatui::Frame;
 use tui_tree_widget::Tree;
 
+use unicode_width::UnicodeWidthStr;
+
 use crate::app::{App, Focus};
 use crate::markdown::LinkInfo;
+
+const HELP_KEYS: &[(&str, &str)] = &[
+    ("j/k", "Navigate / Scroll"),
+    ("Enter", "Open file / Enter directory"),
+    ("Tab", "Switch focus"),
+    ("Spc+e", "Toggle file tree"),
+    ("i/e", "Edit mode"),
+    ("/", "Search"),
+    ("n/N", "Next/Previous match"),
+    ("gg/G", "Top/Bottom"),
+    ("Ctrl+d/u", "Half page down/up"),
+    (":w", "Save"),
+    (":q", "Quit"),
+    ("o", "Open links"),
+    ("?", "This help"),
+];
 
 /// Draw the full UI: file list | preview, plus status bar.
 pub fn draw(frame: &mut Frame, app: &mut App) {
@@ -119,50 +137,24 @@ fn draw_file_list(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect)
     frame.render_stateful_widget(tree_widget, area, &mut app.tree.tree_state);
 }
 
-/// Compute a centered rectangle of the given size, clamped to the area.
-fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {
-    let x = area.x + (area.width.saturating_sub(width)) / 2;
-    let y = area.y + (area.height.saturating_sub(height)) / 2;
-    let w = width.min(area.width);
-    let h = height.min(area.height);
-    Rect::new(x, y, w, h)
-}
-
 fn draw_help_overlay(frame: &mut Frame, area: Rect, bg_color: Color) {
-    let popup_area = centered_rect(50, 22, area);
-    frame.render_widget(Clear, popup_area);
+    let popup_area = modal::centered_rect(50, 20, area);
+    let content_area =
+        modal::render_modal_frame(frame, popup_area, "Help", None, &[("close", "esc")], bg_color);
 
-    let help_text = Text::from(vec![
-        Line::from(""),
-        Line::from(vec![Span::styled(
-            " Keybindings",
-            Style::default().add_modifier(Modifier::BOLD),
-        )]),
-        Line::from(""),
-        Line::from("  j/k       Navigate / Scroll"),
-        Line::from("  Enter     Open file / Enter directory"),
-        Line::from("  Tab       Switch focus"),
-        Line::from("  Space+e   Toggle file tree"),
-        Line::from("  i/e       Edit mode"),
-        Line::from("  /         Search"),
-        Line::from("  n/N       Next/Previous match"),
-        Line::from("  gg/G      Top/Bottom"),
-        Line::from("  Ctrl+d/u  Half page down/up"),
-        Line::from("  :w        Save"),
-        Line::from("  :q        Quit"),
-        Line::from("  o         Open links"),
-        Line::from("  ?         This help"),
-        Line::from("  Esc       Close / Clear"),
-        Line::from(""),
-    ]);
+    let help_lines: Vec<Line> = HELP_KEYS
+        .iter()
+        .map(|&(key, desc)| {
+            Line::from(vec![
+                Span::styled(format!("{key:>12}"), theme::HELP_KEY_STYLE),
+                Span::styled("  ", Style::default()),
+                Span::styled(desc, theme::HELP_DESC_STYLE),
+            ])
+        })
+        .collect();
 
-    let popup = Paragraph::new(help_text).block(modal::popup_block_with_footer(
-        "Help",
-        "Esc to close",
-        bg_color,
-    ));
-
-    frame.render_widget(popup, popup_area);
+    let help_content = Paragraph::new(help_lines);
+    frame.render_widget(help_content, content_area);
 }
 
 fn draw_links_overlay(
@@ -175,69 +167,66 @@ fn draw_links_overlay(
 ) {
     let content_width = links
         .iter()
-        .map(|l| l.display_text.len() + l.url.len() + 4)
+        .map(|l| UnicodeWidthStr::width(l.display_text.as_str()))
         .max()
         .unwrap_or(20)
         .max(search_query.len() + 15)
         .min(60);
-    let popup_width = (content_width as u16 + 6).min(area.width.saturating_sub(4));
+    let popup_width = (content_width as u16 + 10).min(area.width.saturating_sub(4));
     let content_rows = links.len().max(1);
-    let popup_height = (content_rows as u16 + 6).min(area.height.saturating_sub(4));
+    let max_height = (area.height * 3 / 4).max(10);
+    let popup_height =
+        (content_rows as u16 + 10).min(max_height).min(area.height.saturating_sub(4));
 
-    let popup_area = centered_rect(popup_width, popup_height, area);
-    frame.render_widget(Clear, popup_area);
+    let popup_area = modal::centered_rect(popup_width, popup_height, area);
+
+    let content_area = modal::render_modal_frame(
+        frame,
+        popup_area,
+        "Links",
+        Some(search_query),
+        &[("open", "enter"), ("navigate", "↕"), ("close", "esc")],
+        bg_color,
+    );
 
     let mut text_lines: Vec<Line> = Vec::new();
-    text_lines.push(Line::from(""));
 
     if links.is_empty() {
-        text_lines.push(Line::from(Span::styled(
-            " No matching links",
-            Style::default().fg(Color::DarkGray),
-        )));
+        text_lines.push(Line::from(Span::styled("No matching links", theme::MODAL_HINT)));
     } else {
-        let visible_height = popup_height.saturating_sub(6) as usize;
+        let visible_height = content_area.height as usize;
         let scroll_offset =
             if selected >= visible_height { selected - visible_height + 1 } else { 0 };
 
         for (i, link) in links.iter().enumerate().skip(scroll_offset).take(visible_height) {
-            let display = if link.display_text == link.url {
-                link.url.clone()
-            } else {
-                format!("{} → {}", link.display_text, link.url)
-            };
-            let max_text_width = popup_width.saturating_sub(4) as usize;
-            let truncated = if display.len() > max_text_width {
-                format!("{}…", &display[..max_text_width.saturating_sub(1)])
+            let display = link.display_text.clone();
+            let max_text_width = content_area.width as usize;
+            let display_width = UnicodeWidthStr::width(display.as_str());
+            let truncated = if display_width > max_text_width {
+                let mut width = 0;
+                let mut end = 0;
+                for (i, ch) in display.char_indices() {
+                    let ch_width = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0);
+                    if width + ch_width > max_text_width.saturating_sub(1) {
+                        break;
+                    }
+                    width += ch_width;
+                    end = i + ch.len_utf8();
+                }
+                format!("{}…", &display[..end])
             } else {
                 display
             };
 
             if i == selected {
-                text_lines.push(Line::from(Span::styled(
-                    format!(" {} ", truncated),
-                    theme::MODAL_SELECTED,
-                )));
+                let padded = format!("{:<width$}", truncated, width = max_text_width);
+                text_lines.push(Line::from(Span::styled(padded, theme::MODAL_SELECTED)));
             } else {
-                text_lines.push(Line::from(format!(" {} ", truncated)));
+                text_lines.push(Line::from(truncated));
             }
         }
     }
 
-    let title = if search_query.is_empty() {
-        "Links".to_string()
-    } else {
-        format!("Links: {search_query}█")
-    };
-
-    let footer = if search_query.is_empty() {
-        "↕ navigate · ↵ open · type to filter · Esc close"
-    } else {
-        "↕ navigate · ↵ open · Backspace delete · Esc clear"
-    };
-
-    let popup = Paragraph::new(Text::from(text_lines))
-        .block(modal::popup_block_with_footer(&title, footer, bg_color));
-
-    frame.render_widget(popup, popup_area);
+    let links_content = Paragraph::new(text_lines);
+    frame.render_widget(links_content, content_area);
 }

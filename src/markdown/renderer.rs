@@ -305,6 +305,11 @@ impl Renderer {
             return;
         }
 
+        // Accumulate link display text regardless of table context.
+        if self.link_dest.is_some() {
+            self.link_text.push_str(text);
+        }
+
         if self.in_table {
             let style = self.current_style();
             self.table_cell_spans.push(Span::styled(text.to_string(), style));
@@ -312,10 +317,6 @@ impl Renderer {
         }
 
         let style = self.current_style();
-
-        if self.link_dest.is_some() {
-            self.link_text.push_str(text);
-        }
 
         // If there's a pending list marker, emit it first.
         if self.pending_list_marker {
