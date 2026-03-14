@@ -47,7 +47,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 
     // --- Help overlay (rendered last so it's on top) ---
     if app.show_help {
-        draw_help_overlay(frame, frame.area(), app.bg_color);
+        draw_help_overlay(frame, frame.area());
     }
 
     if app.show_links {
@@ -60,7 +60,6 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
             &filtered_links,
             app.link_picker_selected,
             &app.link_search_query,
-            app.bg_color,
         );
     }
 }
@@ -129,12 +128,11 @@ fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {
 }
 
 /// Draw the help overlay popup.
-fn draw_help_overlay(frame: &mut Frame, area: Rect, bg_color: Color) {
-    let popup_area = centered_rect(40, 20, area);
-
-    // Clear the area behind the popup.
+fn draw_help_overlay(frame: &mut Frame, area: Rect) {
+    modal::dim_background(frame, area);
+    let popup_area = centered_rect(50, 22, area);
+    modal::render_shadow(frame, popup_area);
     frame.render_widget(Clear, popup_area);
-    frame.render_widget(Block::default().style(Style::default().bg(bg_color)), popup_area);
 
     let help_text = Text::from(vec![
         Line::from(""),
@@ -160,13 +158,8 @@ fn draw_help_overlay(frame: &mut Frame, area: Rect, bg_color: Color) {
         Line::from(""),
     ]);
 
-    let popup = Paragraph::new(help_text).block(
-        Block::default()
-            .title(" Help ")
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::White))
-            .style(Style::default().bg(bg_color)),
-    );
+    let popup =
+        Paragraph::new(help_text).block(modal::popup_block_with_footer("Help", "Esc to close"));
 
     frame.render_widget(popup, popup_area);
 }
@@ -177,8 +170,9 @@ fn draw_links_overlay(
     links: &[&LinkInfo],
     selected: usize,
     search_query: &str,
-    bg_color: Color,
 ) {
+    modal::dim_background(frame, area);
+
     let content_width = links
         .iter()
         .map(|l| l.display_text.len() + l.url.len() + 4)
@@ -186,14 +180,13 @@ fn draw_links_overlay(
         .unwrap_or(20)
         .max(search_query.len() + 15)
         .min(60);
-    let popup_width = (content_width as u16 + 4).min(area.width.saturating_sub(4));
+    let popup_width = (content_width as u16 + 6).min(area.width.saturating_sub(4));
     let content_rows = links.len().max(1);
-    let popup_height = (content_rows as u16 + 4).min(area.height.saturating_sub(4));
+    let popup_height = (content_rows as u16 + 6).min(area.height.saturating_sub(4));
 
     let popup_area = centered_rect(popup_width, popup_height, area);
-
+    modal::render_shadow(frame, popup_area);
     frame.render_widget(Clear, popup_area);
-    frame.render_widget(Block::default().style(Style::default().bg(bg_color)), popup_area);
 
     let mut text_lines: Vec<Line> = Vec::new();
     text_lines.push(Line::from(""));
@@ -204,7 +197,7 @@ fn draw_links_overlay(
             Style::default().fg(Color::DarkGray),
         )));
     } else {
-        let visible_height = popup_height.saturating_sub(4) as usize;
+        let visible_height = popup_height.saturating_sub(6) as usize;
         let scroll_offset =
             if selected >= visible_height { selected - visible_height + 1 } else { 0 };
 
@@ -224,7 +217,7 @@ fn draw_links_overlay(
             if i == selected {
                 text_lines.push(Line::from(Span::styled(
                     format!(" {} ", truncated),
-                    Style::default().add_modifier(Modifier::REVERSED).add_modifier(Modifier::BOLD),
+                    theme::MODAL_SELECTED,
                 )));
             } else {
                 text_lines.push(Line::from(format!(" {} ", truncated)));
@@ -233,18 +226,19 @@ fn draw_links_overlay(
     }
 
     let title = if search_query.is_empty() {
-        " Links (type to filter ↕ Enter ↵ Esc ✕) ".to_string()
+        "Links".to_string()
     } else {
-        format!(" Links: {}█ ", search_query)
+        format!("Links: {search_query}█")
     };
 
-    let popup = Paragraph::new(Text::from(text_lines)).block(
-        Block::default()
-            .title(title)
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Cyan))
-            .style(Style::default().bg(bg_color)),
-    );
+    let footer = if search_query.is_empty() {
+        "↕ navigate · ↵ open · type to filter · Esc close"
+    } else {
+        "↕ navigate · ↵ open · Backspace delete · Esc clear"
+    };
+
+    let popup = Paragraph::new(Text::from(text_lines))
+        .block(modal::popup_block_with_footer(&title, footer));
 
     frame.render_widget(popup, popup_area);
 }
