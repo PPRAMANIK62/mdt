@@ -96,12 +96,19 @@ impl App {
 
         let query_lower = self.search.query.to_lowercase();
         let mut text_buf = String::new();
+        let mut lower_buf = String::new();
         for (i, line) in self.document.rendered_lines.iter().enumerate() {
             text_buf.clear();
             for s in &line.spans {
                 text_buf.push_str(s.content.as_ref());
             }
-            if text_buf.to_lowercase().contains(&query_lower) {
+            lower_buf.clear();
+            for c in text_buf.chars() {
+                for lc in c.to_lowercase() {
+                    lower_buf.push(lc);
+                }
+            }
+            if lower_buf.contains(&*query_lower) {
                 self.search.matches.push(i);
             }
         }

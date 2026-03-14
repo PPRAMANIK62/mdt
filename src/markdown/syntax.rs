@@ -44,7 +44,7 @@ impl CodeToken {
 }
 
 /// Pre-built `Scope` objects for prefix matching.
-pub(super) struct ScopeMatchers {
+pub(crate) struct ScopeMatchers {
     comment: Scope,
     string: Scope,
     constant_character: Scope,
@@ -86,12 +86,12 @@ impl ScopeMatchers {
     }
 }
 
-pub(super) fn syntax_set() -> &'static SyntaxSet {
+pub(crate) fn syntax_set() -> &'static SyntaxSet {
     static SS: OnceLock<SyntaxSet> = OnceLock::new();
     SS.get_or_init(SyntaxSet::load_defaults_newlines)
 }
 
-pub(super) fn scope_matchers() -> &'static ScopeMatchers {
+pub(crate) fn scope_matchers() -> &'static ScopeMatchers {
     static MATCHERS: OnceLock<ScopeMatchers> = OnceLock::new();
     MATCHERS.get_or_init(ScopeMatchers::new)
 }

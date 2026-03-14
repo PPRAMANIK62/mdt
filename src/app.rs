@@ -10,7 +10,7 @@ use ratatui_textarea::TextArea;
 use tui_tree_widget::{TreeItem, TreeState};
 
 use crate::file_tree;
-use crate::markdown::render_markdown;
+use crate::markdown::{render_markdown_blocks, rewrap_blocks, RenderedBlock};
 
 /// Current input mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -70,6 +70,7 @@ pub(crate) struct DocumentState {
     pub(crate) scroll_offset: usize,
     pub(crate) viewport_height: usize,
     pub(crate) viewport_width: usize,
+    pub(crate) rendered_blocks: Vec<RenderedBlock>,
 }
 
 impl DocumentState {
@@ -154,6 +155,7 @@ impl App {
                 current_file: None,
                 file_content: String::new(),
                 rendered_lines: Vec::new(),
+                rendered_blocks: Vec::new(),
                 scroll_offset: 0,
                 viewport_height: 0,
                 viewport_width: 0,
@@ -235,8 +237,14 @@ impl App {
 
         match std::fs::read_to_string(path) {
             Ok(content) => {
-                let rendered = render_markdown(&content, if self.document.viewport_width > 0 { Some(self.document.viewport_width) } else { None });
-                self.document.rendered_lines = rendered.lines;
+                let blocks = render_markdown_blocks(&content);
+                let width = if self.document.viewport_width > 0 {
+                    Some(self.document.viewport_width)
+                } else {
+                    None
+                };
+                self.document.rendered_lines = rewrap_blocks(&blocks, width);
+                self.document.rendered_blocks = blocks;
                 self.document.file_content = content;
                 self.document.current_file = Some(path.to_path_buf());
                 self.document.scroll_offset = 0;

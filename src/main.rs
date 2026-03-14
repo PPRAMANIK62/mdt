@@ -26,11 +26,20 @@ fn main() -> anyhow::Result<()> {
     // CLI args: `mdt [path]` defaulting to current directory.
     let path = std::env::args().nth(1).map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."));
 
+    // Pre-warm syntax highlighting data on a background thread so the first
+    // file open with code blocks doesn't stall the UI for 100-300ms.
+    std::thread::spawn(|| {
+        crate::markdown::syntax::syntax_set();
+        crate::markdown::syntax::scope_matchers();
+    });
+
     // Detect terminal background color for solid fill (prevents transparency).
     // Must be called before enable_raw_mode() since the crate manages its own raw mode.
     let bg_color = {
         use terminal_colorsaurus::{background_color, QueryOptions};
-        match background_color(QueryOptions::default()) {
+        let mut opts = QueryOptions::default();
+        opts.timeout = Duration::from_millis(150);
+        match background_color(opts) {
             Ok(bg) => {
                 ratatui::style::Color::Rgb((bg.r >> 8) as u8, (bg.g >> 8) as u8, (bg.b >> 8) as u8)
             }

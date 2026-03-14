@@ -25,7 +25,7 @@ const DIR_SCAN_MAX_DEPTH: u32 = 5;
 pub fn build_tree_items(root: &Path) -> Result<TreeBuildResult> {
     let canonical = fs::canonicalize(root)?;
     let mut path_map = HashMap::new();
-    let items = build_items_recursive(&canonical, &canonical, &mut path_map)?;
+    let items = build_items_recursive(&canonical, &canonical, &mut path_map, DIR_SCAN_MAX_DEPTH)?;
     Ok((items, path_map))
 }
 
@@ -33,7 +33,12 @@ fn build_items_recursive(
     dir: &Path,
     root: &Path,
     path_map: &mut HashMap<String, (PathBuf, bool)>,
+    remaining_depth: u32,
 ) -> Result<Vec<TreeItem<'static, String>>> {
+    if remaining_depth == 0 {
+        return Ok(Vec::new());
+    }
+
     let mut raw: Vec<(String, PathBuf, bool)> = Vec::new();
 
     for result in fs::read_dir(dir)? {
@@ -45,7 +50,7 @@ fn build_items_recursive(
         let path = de.path();
         let ft = de.file_type()?;
 
-        if ft.is_dir() && dir_contains_md(&path, DIR_SCAN_MAX_DEPTH) {
+        if ft.is_dir() {
             raw.push((name, path, true));
         } else if ft.is_file() && has_md_extension(&name) {
             raw.push((name, path, false));
@@ -67,7 +72,11 @@ fn build_items_recursive(
         path_map.insert(rel.clone(), (abs_path.clone(), is_dir));
 
         if is_dir {
-            let children = build_items_recursive(&abs_path, root, path_map)?;
+            let children = build_items_recursive(&abs_path, root, path_map, remaining_depth - 1)?;
+            if children.is_empty() {
+                path_map.remove(&rel);
+                continue;
+            }
             items.push(
                 TreeItem::new(
                     rel,
@@ -90,36 +99,6 @@ fn build_items_recursive(
     Ok(items)
 }
 
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
-
-/// Recursively check whether `dir` contains at least one `.md` file.
-/// `max_depth` limits how deep we look (0 means only check direct children).
-fn dir_contains_md(dir: &Path, max_depth: u32) -> bool {
-    let Ok(read) = fs::read_dir(dir) else { return false };
-
-    for result in read {
-        let Ok(de) = result else { continue };
-
-        let name = de.file_name().to_string_lossy().into_owned();
-        if name.starts_with('.') {
-            continue;
-        }
-
-        let Ok(ft) = de.file_type() else { continue };
-
-        if ft.is_file() && has_md_extension(&name) {
-            return true;
-        }
-
-        if ft.is_dir() && max_depth > 0 && dir_contains_md(&de.path(), max_depth - 1) {
-            return true;
-        }
-    }
-
-    false
-}
 
 /// Check if a filename ends with `.md` (case-insensitive).
 fn has_md_extension(name: &str) -> bool {

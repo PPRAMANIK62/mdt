@@ -1,17 +1,16 @@
-//! Markdown renderer — converts pulldown-cmark events into styled ratatui output.
+//! Markdown renderer — converts pulldown-cmark events into width-independent blocks.
 
 use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Tag, TagEnd};
 use ratatui::style::{Color, Style};
-use ratatui::text::{Line, Span, Text};
-use unicode_segmentation::UnicodeSegmentation;
+use ratatui::text::Span;
 use unicode_width::UnicodeWidthStr;
 
+use super::blocks::RenderedBlock;
 use super::syntax::highlight_code;
 use super::theme::*;
-use super::wrap::wrap_spans;
 
 pub(super) struct Renderer {
-    pub(super) lines: Vec<Line<'static>>,
+    pub(super) blocks: Vec<RenderedBlock>,
     pub(super) current_spans: Vec<Span<'static>>,
     pub(super) style_stack: Vec<Style>,
     /// Stack of list contexts: None = unordered, Some(n) = ordered starting at n.
@@ -30,8 +29,6 @@ pub(super) struct Renderer {
     pub(super) needs_newline: bool,
     /// Current link destination (Some while inside a link).
     pub(super) link_dest: Option<String>,
-    /// Available terminal width for wrapping (None = no wrapping).
-    pub(super) available_width: Option<usize>,
     /// Whether we're inside a heading (to apply heading style to all text).
     /// Width of the current list marker (indent + bullet/number) for hanging indent.
     pub(super) list_marker_width: usize,
@@ -49,9 +46,9 @@ pub(super) struct Renderer {
 }
 
 impl Renderer {
-    pub(super) fn new(available_width: Option<usize>) -> Self {
+    pub(super) fn new() -> Self {
         Self {
-            lines: Vec::new(),
+            blocks: Vec::new(),
             current_spans: Vec::new(),
             style_stack: Vec::new(),
             list_stack: Vec::new(),
@@ -62,7 +59,6 @@ impl Renderer {
             pending_list_marker: false,
             needs_newline: false,
             link_dest: None,
-            available_width,
             in_heading: false,
             in_table: false,
             table_alignments: Vec::new(),
@@ -80,8 +76,8 @@ impl Renderer {
         self.flush_line();
     }
 
-    pub(super) fn into_text(self) -> Text<'static> {
-        Text::from(self.lines)
+    pub(super) fn into_blocks(self) -> Vec<RenderedBlock> {
+        self.blocks
     }
 
     // ── Event dispatch ──────────────────────────────────────────────────
@@ -222,10 +218,7 @@ impl Renderer {
                 self.needs_newline = true;
             }
             TagEnd::CodeBlock => {
-                let effective = self
-                    .available_width
-                    .map(|w| w.saturating_sub(self.blockquote_depth * BLOCKQUOTE_INDENT_COLS));
-                self.render_code_block(effective);
+                self.render_code_block();
                 self.in_code_block = false;
                 self.code_block_lang = None;
                 self.needs_newline = true;
@@ -355,13 +348,10 @@ impl Renderer {
 
     fn on_rule(&mut self) {
         self.flush_line();
-        if !self.lines.is_empty() {
+        if !self.blocks.is_empty() {
             self.push_blank_line();
         }
-        let bq_offset = self.blockquote_depth * BLOCKQUOTE_INDENT_COLS;
-        let width = self.available_width.map(|w| w.saturating_sub(bq_offset)).unwrap_or(40);
-        let rule = "─".repeat(width);
-        self.lines.push(Line::from(Span::styled(rule, HR_STYLE)));
+        self.blocks.push(RenderedBlock::HorizontalRule { blockquote_depth: self.blockquote_depth });
         self.needs_newline = true;
     }
 
@@ -398,232 +388,41 @@ impl Renderer {
 
     // ── Code block rendering ────────────────────────────────────────────
 
-    /// Minimum display width for code block boxes.
-    const CODE_BLOCK_MIN_WIDTH: usize = 20;
-    /// Padding added to each side of code block content (left + right borders).
-    const CODE_BLOCK_BORDER_PAD: usize = 2;
-
-    fn render_code_block(&mut self, available_width: Option<usize>) {
+    fn render_code_block(&mut self) {
         let code = std::mem::take(&mut self.code_block_buf);
         let lang = self.code_block_lang.clone().unwrap_or_default();
 
-        // Highlight first so we can measure widths.
+        // Highlight (width-independent) — the expensive part done once.
         let highlighted_lines = highlight_code(&code, &lang);
 
-        // Calculate display width of each line's spans.
-        fn spans_display_width(spans: &[Span<'_>]) -> usize {
-            spans.iter().map(|s| s.content.width()).sum()
-        }
-
-        let content_max = highlighted_lines
-            .iter()
-            .map(|spans| spans_display_width(spans))
-            .max()
-            .unwrap_or(Self::CODE_BLOCK_MIN_WIDTH)
-            .max(Self::CODE_BLOCK_MIN_WIDTH);
-
-        // Clamp to available terminal width if provided.
-        let max_width = match available_width {
-            // available_width includes the border chars (│ + space on each side = 4),
-            // so inner content area = available - border_pad - 2 (for │ chars).
-            Some(aw) if aw > Self::CODE_BLOCK_BORDER_PAD + 2 => {
-                content_max.min(aw - Self::CODE_BLOCK_BORDER_PAD - 2)
-            }
-            _ => content_max,
-        };
-
-        // inner = " code_padded " = max_width + border_pad (one space each side)
-        let inner = max_width + Self::CODE_BLOCK_BORDER_PAD;
-
-        // Header: ┌─ lang ─...─┐
-        let header_text = if lang.is_empty() {
-            format!("┌{}┐", "─".repeat(inner))
-        } else {
-            let label = format!("─ {} ─", lang);
-            let label_width = label.width();
-            let remaining = inner.saturating_sub(label_width);
-            format!("┌{}{}┐", label, "─".repeat(remaining))
-        };
-        self.lines.push(Line::from(Span::styled(header_text, CODE_BORDER_STYLE)));
-
-        // Code lines with right border.
-        for line_spans in highlighted_lines {
-            let content_width = spans_display_width(&line_spans);
-            let truncated_spans = if content_width > max_width {
-                // Truncate: iterate spans, accumulate width, cut at max_width - 1 to fit "…"
-                let budget = max_width.saturating_sub(1); // 1 col for "…"
-                let mut result: Vec<Span<'static>> = Vec::new();
-                let mut used = 0usize;
-                for span in line_spans {
-                    let sw = span.content.width();
-                    if used + sw <= budget {
-                        result.push(span);
-                        used += sw;
-                    } else {
-                        // Partial span: take graphemes that fit
-                        let remaining = budget - used;
-                        if remaining > 0 {
-                            let mut partial = String::new();
-                            for g in span.content.graphemes(true) {
-                                if partial.width() + g.width() > remaining {
-                                    break;
-                                }
-                                partial.push_str(g);
-                            }
-                            if !partial.is_empty() {
-                                result.push(Span::styled(partial, span.style));
-                            }
-                        }
-                        result.push(Span::styled("…", CODE_BORDER_STYLE));
-                        break;
-                    }
-                }
-                result
-            } else {
-                line_spans
-            };
-            let truncated_width = spans_display_width(&truncated_spans);
-            let padding = max_width.saturating_sub(truncated_width);
-            let mut spans = vec![Span::styled("│ ", CODE_BORDER_STYLE)];
-            spans.extend(truncated_spans);
-            spans.push(Span::styled(format!("{} │", " ".repeat(padding)), CODE_BORDER_STYLE));
-            self.lines.push(Line::from(spans));
-        }
-
-        // Footer: └─...─┘
-        self.lines
-            .push(Line::from(Span::styled(format!("└{}┘", "─".repeat(inner)), CODE_BORDER_STYLE)));
+        self.blocks.push(RenderedBlock::CodeBlock {
+            lang,
+            highlighted_lines,
+            blockquote_depth: self.blockquote_depth,
+        });
     }
 
     // ── Table rendering ─────────────────────────────────────────────────
 
-    /// Minimum display width for table columns.
-    const TABLE_MIN_COL_WIDTH: usize = 3;
-    /// Padding added to each side of a table cell.
-    const TABLE_CELL_PAD: usize = 2;
-
     fn render_table(&mut self) {
-        // Filter out empty trailing rows
-        let rows: Vec<&Vec<Vec<Span<'static>>>> =
-            self.table_rows.iter().filter(|r| !r.is_empty()).collect();
+        // Filter out empty trailing rows.
+        let rows: Vec<Vec<Vec<Span<'static>>>> =
+            self.table_rows.iter().filter(|r| !r.is_empty()).cloned().collect();
 
         if rows.is_empty() {
             return;
         }
 
-        let num_cols = rows.iter().map(|r| r.len()).max().unwrap_or(0);
+        let num_cols = rows.iter().map(Vec::len).max().unwrap_or(0);
         if num_cols == 0 {
             return;
         }
 
-        // Helper: display width of a slice of spans.
-        fn cell_display_width(spans: &[Span<'_>]) -> usize {
-            spans.iter().map(|s| s.content.width()).sum()
-        }
-
-        // Calculate column widths (max content width per column)
-        let mut col_widths = vec![0usize; num_cols];
-        for row in &rows {
-            for (i, cell) in row.iter().enumerate() {
-                let width: usize = cell.iter().map(|s| s.content.width()).sum();
-                col_widths[i] = col_widths[i].max(width);
-            }
-        }
-        // Minimum column width of 3
-        for w in &mut col_widths {
-            *w = (*w).max(Self::TABLE_MIN_COL_WIDTH);
-        }
-
-        // Clamp to available width if provided.
-        let effective_width = self
-            .available_width
-            .map(|w| w.saturating_sub(self.blockquote_depth * BLOCKQUOTE_INDENT_COLS));
-        if let Some(aw) = effective_width {
-            // Total table width: sum(col_widths) + (num_cols * TABLE_CELL_PAD) + num_cols + 1
-            // Each cell: " content " = col_width + TABLE_CELL_PAD, plus separators
-            let total: usize =
-                col_widths.iter().sum::<usize>() + (num_cols * Self::TABLE_CELL_PAD) + num_cols + 1;
-            if total > aw && num_cols > 0 {
-                // Shrink columns proportionally
-                let border_overhead = (num_cols * Self::TABLE_CELL_PAD) + num_cols + 1;
-                let available_content = aw.saturating_sub(border_overhead);
-                let current_content: usize = col_widths.iter().sum();
-                for w in &mut col_widths {
-                    let shrunk = (*w * available_content) / current_content.max(1);
-                    *w = shrunk.max(Self::TABLE_MIN_COL_WIDTH);
-                }
-            }
-        }
-
-        // Helper to build a horizontal border line
-        let build_border = |left: &str, mid: &str, right: &str, fill: &str| -> Line<'static> {
-            let mut s = left.to_string();
-            for (i, &w) in col_widths.iter().enumerate() {
-                s.push_str(&fill.repeat(w + Self::TABLE_CELL_PAD)); // +2 for padding spaces
-                if i < num_cols - 1 {
-                    s.push_str(mid);
-                }
-            }
-            s.push_str(right);
-            Line::from(Span::styled(s, TABLE_BORDER_STYLE))
-        };
-
-        // Top border: ┌───┬───┐
-        self.lines.push(build_border("┌", "┬", "┐", "─"));
-
-        for (row_idx, row) in rows.iter().enumerate() {
-            // Wrap each cell's content to get multiple visual lines per cell.
-            let wrapped_cells: Vec<Vec<Vec<Span<'static>>>> = col_widths
-                .iter()
-                .enumerate()
-                .map(|(col_idx, col_width)| {
-                    let cell_spans: &[Span] = match row.get(col_idx) {
-                        Some(c) => c,
-                        None => &[],
-                    };
-                    wrap_spans(cell_spans, *col_width)
-                })
-                .collect();
-
-            // Row height = tallest (most-wrapped) cell.
-            let row_height = wrapped_cells.iter().map(Vec::len).max().unwrap_or(1);
-
-            // Render each visual sub-line of this row.
-            for sub_line in 0..row_height {
-                let mut spans: Vec<Span<'static>> = Vec::with_capacity(col_widths.len() * 2 + 2);
-                spans.push(Span::styled("│ ", TABLE_BORDER_STYLE));
-
-                for (col_idx, col_width) in col_widths.iter().enumerate() {
-                    let cell_line_spans =
-                        wrapped_cells.get(col_idx).and_then(|lines| lines.get(sub_line));
-
-                    let (line_spans, content_width) = match cell_line_spans {
-                        Some(ls) => {
-                            let w = cell_display_width(ls);
-                            (ls.clone(), w)
-                        }
-                        None => (vec![], 0),
-                    };
-
-                    let padding = col_width.saturating_sub(content_width);
-                    spans.extend(line_spans);
-                    spans.push(Span::styled(
-                        format!("{} │ ", " ".repeat(padding)),
-                        TABLE_BORDER_STYLE,
-                    ));
-                }
-
-                self.lines.push(Line::from(spans));
-            }
-
-            // After the first row (header), add separator: ├───┼───┤
-            if row_idx == 0 && rows.len() > 1 {
-                self.lines.push(build_border("├", "┼", "┤", "─"));
-            }
-        }
-
-        // Bottom border: └───┴───┘
-        self.lines.push(build_border("└", "┴", "┘", "─"));
+        self.blocks.push(RenderedBlock::Table {
+            rows,
+            alignments: self.table_alignments.clone(),
+            blockquote_depth: self.blockquote_depth,
+        });
     }
 
     // ── List helpers ────────────────────────────────────────────────────
@@ -685,7 +484,7 @@ impl Renderer {
         self.style_stack.push(current.patch(new_style));
     }
 
-    // ── Line management ─────────────────────────────────────────────────
+    // ── Block management ────────────────────────────────────────────────
 
     fn flush_line(&mut self) {
         if self.current_spans.is_empty() {
@@ -693,54 +492,15 @@ impl Renderer {
         }
         let spans = std::mem::take(&mut self.current_spans);
 
-        if let Some(width) = self.available_width {
-            // Calculate effective width accounting for blockquote bars.
-            let bq_prefix_width = self.blockquote_depth * BLOCKQUOTE_INDENT_COLS; // each "▎ " is 2 cols
-            let effective_width = width.saturating_sub(bq_prefix_width);
-            let wrapped_lines = wrap_spans(&spans, effective_width);
-            let list_marker_width = self.list_marker_width;
-
-            for (i, line_spans) in wrapped_lines.into_iter().enumerate() {
-                let mut final_spans = Vec::new();
-
-                // Prepend blockquote bars on every wrapped line.
-                for _ in 0..self.blockquote_depth {
-                    final_spans.push(Span::styled("▎ ", BLOCKQUOTE_STYLE));
-                }
-
-                // For list items, continuation lines get hanging indent.
-                if i > 0 && list_marker_width > 0 {
-                    final_spans.push(Span::styled(" ".repeat(list_marker_width), Style::default()));
-                }
-
-                final_spans.extend(line_spans);
-                self.lines.push(Line::from(final_spans));
-            }
-        } else {
-            // Original behavior: no wrapping.
-            if self.blockquote_depth > 0 {
-                let mut final_spans = Vec::new();
-                for _ in 0..self.blockquote_depth {
-                    final_spans.push(Span::styled("▎ ", BLOCKQUOTE_STYLE));
-                }
-                final_spans.extend(spans);
-                self.lines.push(Line::from(final_spans));
-            } else {
-                self.lines.push(Line::from(spans));
-            }
-        }
+        self.blocks.push(RenderedBlock::StyledLine {
+            spans,
+            blockquote_depth: self.blockquote_depth,
+            list_marker_width: self.list_marker_width,
+        });
     }
 
     fn push_blank_line(&mut self) {
         self.flush_line();
-        if self.blockquote_depth > 0 {
-            let mut spans = Vec::new();
-            for _ in 0..self.blockquote_depth {
-                spans.push(Span::styled("▎ ", BLOCKQUOTE_STYLE));
-            }
-            self.lines.push(Line::from(spans));
-        } else {
-            self.lines.push(Line::default());
-        }
+        self.blocks.push(RenderedBlock::BlankLine { blockquote_depth: self.blockquote_depth });
     }
 }

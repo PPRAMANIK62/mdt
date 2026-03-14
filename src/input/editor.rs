@@ -4,7 +4,7 @@ use ratatui::widgets::{Block, Borders};
 use ratatui_textarea::TextArea;
 
 use crate::app::{App, AppMode};
-use crate::markdown::render_markdown;
+use crate::markdown::{render_markdown_blocks, rewrap_blocks};
 
 impl App {
     /// Handle key events in Insert mode — forward to TextArea.
@@ -106,8 +106,14 @@ impl App {
             Ok(()) => {
                 // Update stored content and re-render markdown preview.
                 self.document.file_content = content;
-                let rendered = render_markdown(&self.document.file_content, if self.document.viewport_width > 0 { Some(self.document.viewport_width) } else { None });
-                self.document.rendered_lines = rendered.lines;
+                let blocks = render_markdown_blocks(&self.document.file_content);
+                let width = if self.document.viewport_width > 0 {
+                    Some(self.document.viewport_width)
+                } else {
+                    None
+                };
+                self.document.rendered_lines = rewrap_blocks(&blocks, width);
+                self.document.rendered_blocks = blocks;
                 self.editor.is_dirty = false;
 
                 self.status_message = "written".to_string();
