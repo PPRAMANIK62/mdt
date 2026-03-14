@@ -6,10 +6,7 @@ pub(crate) struct TempTestDir {
 #[cfg(test)]
 impl TempTestDir {
     pub fn new(name: &str) -> Self {
-        let dir = tempfile::Builder::new()
-            .prefix(name)
-            .tempdir()
-            .unwrap();
+        let dir = tempfile::Builder::new().prefix(name).tempdir().unwrap();
         Self { dir }
     }
 

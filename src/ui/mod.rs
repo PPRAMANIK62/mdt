@@ -47,7 +47,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 
     // --- Help overlay (rendered last so it's on top) ---
     if app.show_help {
-        draw_help_overlay(frame, frame.area());
+        draw_help_overlay(frame, frame.area(), app.bg_color);
     }
 
     if app.show_links {
@@ -60,6 +60,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
             &filtered_links,
             app.link_picker_selected,
             &app.link_search_query,
+            app.bg_color,
         );
     }
 }
@@ -127,11 +128,8 @@ fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {
     Rect::new(x, y, w, h)
 }
 
-/// Draw the help overlay popup.
-fn draw_help_overlay(frame: &mut Frame, area: Rect) {
-    modal::dim_background(frame, area);
+fn draw_help_overlay(frame: &mut Frame, area: Rect, bg_color: Color) {
     let popup_area = centered_rect(50, 22, area);
-    modal::render_shadow(frame, popup_area);
     frame.render_widget(Clear, popup_area);
 
     let help_text = Text::from(vec![
@@ -158,8 +156,11 @@ fn draw_help_overlay(frame: &mut Frame, area: Rect) {
         Line::from(""),
     ]);
 
-    let popup =
-        Paragraph::new(help_text).block(modal::popup_block_with_footer("Help", "Esc to close"));
+    let popup = Paragraph::new(help_text).block(modal::popup_block_with_footer(
+        "Help",
+        "Esc to close",
+        bg_color,
+    ));
 
     frame.render_widget(popup, popup_area);
 }
@@ -170,9 +171,8 @@ fn draw_links_overlay(
     links: &[&LinkInfo],
     selected: usize,
     search_query: &str,
+    bg_color: Color,
 ) {
-    modal::dim_background(frame, area);
-
     let content_width = links
         .iter()
         .map(|l| l.display_text.len() + l.url.len() + 4)
@@ -185,7 +185,6 @@ fn draw_links_overlay(
     let popup_height = (content_rows as u16 + 6).min(area.height.saturating_sub(4));
 
     let popup_area = centered_rect(popup_width, popup_height, area);
-    modal::render_shadow(frame, popup_area);
     frame.render_widget(Clear, popup_area);
 
     let mut text_lines: Vec<Line> = Vec::new();
@@ -238,7 +237,7 @@ fn draw_links_overlay(
     };
 
     let popup = Paragraph::new(Text::from(text_lines))
-        .block(modal::popup_block_with_footer(&title, footer));
+        .block(modal::popup_block_with_footer(&title, footer, bg_color));
 
     frame.render_widget(popup, popup_area);
 }

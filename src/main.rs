@@ -43,7 +43,7 @@ fn main() -> anyhow::Result<()> {
             Ok(bg) => {
                 ratatui::style::Color::Rgb((bg.r >> 8) as u8, (bg.g >> 8) as u8, (bg.b >> 8) as u8)
             }
-            Err(_) => ratatui::style::Color::Rgb(0, 0, 0),
+            Err(_) => ratatui::style::Color::Reset,
         }
     };
 
