@@ -62,16 +62,12 @@ impl App {
             if *is_dir {
                 continue;
             }
-            let file_name =
-                path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default();
+            let file_name = path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default();
             if file_name.to_lowercase().contains(&query_lower) {
                 let display_name = file_name.into_owned();
                 let item = TreeItem::new_leaf(
                     id.clone(),
-                    Line::from(Span::styled(
-                        display_name,
-                        Style::new().fg(Color::Indexed(253)),
-                    )),
+                    Line::from(Span::styled(display_name, Style::new().fg(Color::White))),
                 );
                 filtered_items.push(item);
                 filtered_map.insert(id.clone(), (path.clone(), *is_dir));

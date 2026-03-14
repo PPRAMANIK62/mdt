@@ -1,6 +1,7 @@
 pub mod editor;
 pub mod preview;
 pub mod status_bar;
+pub mod welcome;
 
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
@@ -83,6 +84,22 @@ fn draw_file_list(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect)
         return;
     }
 
+    let selected_is_dir = app
+        .tree
+        .tree_state
+        .selected()
+        .last()
+        .and_then(|id| app.tree.path_map.get(id))
+        .is_some_and(|(_, is_dir)| *is_dir);
+
+    let highlight = if app.focus != Focus::FileList {
+        Style::default()
+    } else if selected_is_dir {
+        Style::default().bg(Color::Blue).fg(Color::Black).add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().bg(Color::White).fg(Color::Black).add_modifier(Modifier::BOLD)
+    };
+
     let tree_widget = match Tree::new(items) {
         Ok(tree) => tree
             .block(
@@ -91,11 +108,7 @@ fn draw_file_list(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect)
                     .border_style(Style::default().fg(Color::DarkGray))
                     .padding(Padding::new(0, 0, 1, 0)),
             )
-            .highlight_style(if app.focus == Focus::FileList {
-                Style::default().bg(Color::Indexed(236))
-            } else {
-                Style::default()
-            })
+            .highlight_style(highlight)
             .node_open_symbol("▾ ")
             .node_closed_symbol("▸ "),
         Err(_) => return,
@@ -209,7 +222,7 @@ fn draw_links_overlay(
             if i == selected {
                 text_lines.push(Line::from(Span::styled(
                     format!(" {} ", truncated),
-                    Style::default().bg(Color::Indexed(236)).add_modifier(Modifier::BOLD),
+                    Style::default().add_modifier(Modifier::REVERSED).add_modifier(Modifier::BOLD),
                 )));
             } else {
                 text_lines.push(Line::from(format!(" {} ", truncated)));

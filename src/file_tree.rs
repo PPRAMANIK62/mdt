@@ -82,7 +82,7 @@ fn build_items_recursive(
                     rel,
                     Line::from(Span::styled(
                         format!("{name}/"),
-                        Style::new().fg(Color::Indexed(74)).add_modifier(Modifier::BOLD),
+                        Style::new().fg(Color::Blue).add_modifier(Modifier::BOLD),
                     )),
                     children,
                 )
@@ -91,14 +91,13 @@ fn build_items_recursive(
         } else {
             items.push(TreeItem::new_leaf(
                 rel,
-                Line::from(Span::styled(name, Style::new().fg(Color::Indexed(253)))),
+                Line::from(Span::styled(name, Style::new().fg(Color::White))),
             ));
         }
     }
 
     Ok(items)
 }
-
 
 /// Check if a filename ends with `.md` (case-insensitive).
 fn has_md_extension(name: &str) -> bool {

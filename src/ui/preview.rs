@@ -42,8 +42,7 @@ pub fn draw_preview(frame: &mut Frame, app: &mut App, area: Rect) {
     }
 
     if app.document.rendered_lines.is_empty() {
-        let placeholder = Paragraph::new("Select a file to preview").block(block);
-        frame.render_widget(placeholder, area);
+        super::welcome::draw_welcome(frame, area, app.bg_color);
         return;
     }
 
@@ -191,11 +190,11 @@ mod tests {
     }
 
     #[test]
-    fn draw_preview_empty_shows_placeholder() {
+    fn draw_preview_empty_shows_welcome() {
         let dir = TempTestDir::new("mdt-test-preview");
         dir.create_file("test.md", "");
         let mut app = App::new(dir.path(), Color::Reset).unwrap();
-        let backend = TestBackend::new(60, 10);
+        let backend = TestBackend::new(60, 24);
         let mut terminal = Terminal::new(backend).unwrap();
         terminal
             .draw(|f| {
@@ -209,6 +208,6 @@ mod tests {
             .filter_map(|(x, y)| buf.cell(Position::new(x, y)))
             .map(ratatui::buffer::Cell::symbol)
             .collect();
-        assert!(text.contains("Select a file"));
+        assert!(text.contains("Terminal Markdown Viewer"));
     }
 }

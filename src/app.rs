@@ -182,7 +182,7 @@ impl App {
             show_links: false,
             link_picker_selected: 0,
             link_search_query: String::new(),
-            show_file_tree: true,
+            show_file_tree: false,
             bg_color,
             root_path,
         })
