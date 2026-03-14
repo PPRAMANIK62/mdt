@@ -1,6 +1,8 @@
 pub mod editor;
+pub mod modal;
 pub mod preview;
 pub mod status_bar;
+pub mod theme;
 pub mod welcome;
 
 use ratatui::layout::{Constraint, Layout, Rect};
