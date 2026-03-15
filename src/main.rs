@@ -5,6 +5,7 @@ mod input;
 #[cfg(test)]
 mod integration_tests;
 mod markdown;
+mod palette;
 #[cfg(test)]
 mod test_util;
 mod ui;
@@ -134,9 +135,14 @@ fn run_loop(
         }
 
         // Force redraw when cursor-bearing overlays are active (for blink animation).
-        let had_cursor = app.cursor_visible;
+        let had_cursor = app.cursor.visible;
         app.tick_cursor();
-        if app.cursor_visible != had_cursor && (app.show_file_op || app.show_links) {
+        if app.cursor.visible != had_cursor
+            && matches!(
+                app.overlay,
+                crate::app::Overlay::FileOp(_) | crate::app::Overlay::LinkPicker
+            )
+        {
             needs_redraw = true;
         }
 

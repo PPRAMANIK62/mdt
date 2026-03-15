@@ -197,7 +197,7 @@ fn help_overlay_renders_and_dismisses() {
 
     // Open help
     app.handle_event(key(KeyCode::Char('?')));
-    assert!(app.show_help);
+    assert!(matches!(app.overlay, crate::app::Overlay::Help));
 
     let text = render(&mut terminal, &mut app);
     assert!(text.contains("Help"));
@@ -205,7 +205,7 @@ fn help_overlay_renders_and_dismisses() {
 
     // Esc dismisses
     app.handle_event(key(KeyCode::Esc));
-    assert!(!app.show_help);
+    assert!(matches!(app.overlay, crate::app::Overlay::None));
 }
 
 // ── Full render with file tree ─────────────────────────────────────────

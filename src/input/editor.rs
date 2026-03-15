@@ -3,8 +3,8 @@ use ratatui::style::Style;
 use ratatui::widgets::{Block, Borders};
 use ratatui_textarea::TextArea;
 
-use crate::app::{deduplicate_links, App, AppMode};
-use crate::markdown::{render_markdown_blocks, rewrap_blocks};
+use crate::app::{App, AppMode};
+use crate::markdown::{deduplicate_links, render_markdown_blocks, rewrap_blocks};
 
 impl App {
     /// Handle key events in Insert mode — forward to TextArea.
@@ -89,14 +89,14 @@ impl App {
     }
 
     /// Save the editor content to disk, re-render markdown.
-    pub(crate) fn save_editor(&mut self) -> Result<(), String> {
+    pub(crate) fn save_editor(&mut self) -> anyhow::Result<()> {
         let Some(ref path) = self.document.current_file else {
             self.status_message = "No file path".to_string();
-            return Err("No file path".to_string());
+            anyhow::bail!("No file path");
         };
         let Some(ref textarea) = self.editor.textarea else {
             self.status_message = "Not in editor".to_string();
-            return Err("Not in editor".to_string());
+            anyhow::bail!("Not in editor");
         };
 
         let content = textarea.lines().join("\n") + "\n";
@@ -104,7 +104,6 @@ impl App {
 
         match std::fs::write(&path, &content) {
             Ok(()) => {
-                // Update stored content and re-render markdown preview.
                 self.document.file_content = content;
                 let (blocks, links) = render_markdown_blocks(&self.document.file_content);
                 let width = if self.document.viewport_width > 0 {
@@ -123,7 +122,7 @@ impl App {
             }
             Err(e) => {
                 self.status_message = format!("Error saving: {e}");
-                Err(format!("Error saving: {e}"))
+                Err(e.into())
             }
         }
     }

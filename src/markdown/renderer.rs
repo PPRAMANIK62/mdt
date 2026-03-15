@@ -16,6 +16,41 @@ pub struct LinkInfo {
     pub url: String,
 }
 
+/// Convert a raw URL into a human-readable label by stripping scheme and www prefix.
+fn humanize_url(url: &str) -> String {
+    let stripped =
+        url.strip_prefix("https://").or_else(|| url.strip_prefix("http://")).unwrap_or(url);
+    let stripped = stripped.strip_prefix("www.").unwrap_or(stripped);
+    let stripped = stripped.strip_suffix('/').unwrap_or(stripped);
+    stripped.to_string()
+}
+
+/// Deduplicate links by URL, preferring entries with descriptive display text.
+pub fn deduplicate_links(links: Vec<LinkInfo>) -> Vec<LinkInfo> {
+    use std::collections::HashMap;
+    let mut seen: HashMap<String, usize> = HashMap::new();
+    let mut result: Vec<LinkInfo> = Vec::new();
+
+    for link in links {
+        if let Some(&idx) = seen.get(&link.url) {
+            if result[idx].display_text == result[idx].url && link.display_text != link.url {
+                result[idx] = link;
+            }
+        } else {
+            seen.insert(link.url.clone(), result.len());
+            result.push(link);
+        }
+    }
+
+    for link in &mut result {
+        if link.display_text == link.url {
+            link.display_text = humanize_url(&link.url);
+        }
+    }
+
+    result
+}
+
 pub(super) struct Renderer {
     pub(super) blocks: Vec<RenderedBlock>,
     pub(super) current_spans: Vec<Span<'static>>,
@@ -429,9 +464,9 @@ impl Renderer {
     // ── Table rendering ─────────────────────────────────────────────────
 
     fn render_table(&mut self) {
-        // Filter out empty trailing rows.
+        // Drain rows to avoid cloning; filter out empty trailing rows.
         let rows: Vec<Vec<Vec<Span<'static>>>> =
-            self.table_rows.iter().filter(|r| !r.is_empty()).cloned().collect();
+            self.table_rows.drain(..).filter(|r| !r.is_empty()).collect();
 
         if rows.is_empty() {
             return;
@@ -444,7 +479,7 @@ impl Renderer {
 
         self.blocks.push(RenderedBlock::Table {
             rows,
-            alignments: self.table_alignments.clone(),
+            alignments: std::mem::take(&mut self.table_alignments),
             blockquote_depth: self.blockquote_depth,
         });
     }

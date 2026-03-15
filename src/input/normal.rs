@@ -1,7 +1,7 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::time::Instant;
 
-use crate::app::{App, AppMode, Focus};
+use crate::app::{App, AppMode, Focus, Overlay};
 /// Timeout in milliseconds for composed key sequences (e.g., `gg`, `Space+e`).
 const DOUBLE_KEY_TIMEOUT_MS: u128 = 500;
 
@@ -152,9 +152,9 @@ impl App {
                     if self.document.links.is_empty() {
                         self.status_message = "No links in document".to_string();
                     } else {
-                        self.show_links = true;
-                        self.link_picker_selected = 0;
-                        self.link_search_query.clear();
+                        self.overlay = Overlay::LinkPicker;
+                        self.link_picker.selected = 0;
+                        self.link_picker.search_query.clear();
                     }
                 }
             }
@@ -162,7 +162,10 @@ impl App {
             // --- Help ---
             KeyCode::Char('?') => {
                 if self.editor.textarea.is_none() {
-                    self.show_help = !self.show_help;
+                    self.overlay = match self.overlay {
+                        Overlay::Help => Overlay::None,
+                        _ => Overlay::Help,
+                    };
                 }
             }
 

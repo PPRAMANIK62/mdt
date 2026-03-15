@@ -99,10 +99,8 @@ impl App {
 
         // Scroll to first match.
         if let Some(&line_num) = self.search.matches.first() {
-            self.document.scroll_offset = line_num.saturating_sub(2);
-            self.document.clamp_scroll();
-            self.status_message =
-                format!("/{} [{}/{}]", self.search.query, 1, self.search.matches.len());
+            self.document.scroll_to_line(line_num);
+            self.update_search_status();
         } else {
             self.status_message = format!("Pattern not found: {}", self.search.query);
         }
@@ -110,47 +108,39 @@ impl App {
 
     /// Navigate to the next search match.
     pub(crate) fn next_search_match(&mut self) {
-        if self.search.matches.is_empty() {
-            // For file search, just keep filter active.
-            return;
-        }
-        if self.search.current + 1 < self.search.matches.len() {
-            self.search.current += 1;
-        } else {
-            self.search.current = 0; // Wrap around.
-        }
-        if let Some(&line_num) = self.search.matches.get(self.search.current) {
-            self.document.scroll_offset = line_num.saturating_sub(2);
-            self.document.clamp_scroll();
-            self.status_message = format!(
-                "/{} [{}/{}]",
-                self.search.query,
-                self.search.current + 1,
-                self.search.matches.len()
-            );
-        }
+        self.move_to_search_match(true);
     }
 
     /// Navigate to the previous search match.
     pub(crate) fn prev_search_match(&mut self) {
+        self.move_to_search_match(false);
+    }
+
+    fn move_to_search_match(&mut self, forward: bool) {
         if self.search.matches.is_empty() {
             return;
         }
-        if self.search.current > 0 {
-            self.search.current -= 1;
+        let len = self.search.matches.len();
+        self.search.current = if forward {
+            if self.search.current + 1 < len { self.search.current + 1 } else { 0 }
+        } else if self.search.current > 0 {
+            self.search.current - 1
         } else {
-            self.search.current = self.search.matches.len().saturating_sub(1); // Wrap.
-        }
+            len.saturating_sub(1)
+        };
         if let Some(&line_num) = self.search.matches.get(self.search.current) {
-            self.document.scroll_offset = line_num.saturating_sub(2);
-            self.document.clamp_scroll();
-            self.status_message = format!(
-                "/{} [{}/{}]",
-                self.search.query,
-                self.search.current + 1,
-                self.search.matches.len()
-            );
+            self.document.scroll_to_line(line_num);
+            self.update_search_status();
         }
+    }
+
+    fn update_search_status(&mut self) {
+        self.status_message = format!(
+            "/{} [{}/{}]",
+            self.search.query,
+            self.search.current + 1,
+            self.search.matches.len()
+        );
     }
 
     /// Clear all search state, restoring the original unfiltered tree.
