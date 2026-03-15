@@ -38,6 +38,34 @@ impl App {
         }
 
         match key.code {
+            // --- File operations (FileList only) ---
+            KeyCode::Char('a') => {
+                if self.focus == Focus::FileList {
+                    self.start_create_file();
+                }
+            }
+            KeyCode::Char('A') => {
+                if self.focus == Focus::FileList {
+                    self.start_create_dir();
+                }
+            }
+            KeyCode::Char('d')
+                if !key.modifiers.contains(KeyModifiers::CONTROL)
+                    && self.focus == Focus::FileList =>
+            {
+                self.start_delete();
+            }
+            KeyCode::Char('r') => {
+                if self.focus == Focus::FileList {
+                    self.start_rename();
+                }
+            }
+            KeyCode::Char('m') => {
+                if self.focus == Focus::FileList {
+                    self.start_move();
+                }
+            }
+
             // --- Navigation (focus-dependent) ---
             KeyCode::Char('j') | KeyCode::Down => match self.focus {
                 Focus::FileList => {

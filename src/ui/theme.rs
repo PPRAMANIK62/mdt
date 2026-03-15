@@ -11,7 +11,7 @@ pub(crate) const MODAL_BORDER: Style = Style::new().fg(Color::DarkGray);
 pub(crate) const MODAL_TITLE: Style = Style::new().fg(Color::White).add_modifier(Modifier::BOLD);
 
 /// Hint/muted text (footer, secondary info).
-pub(crate) const MODAL_HINT: Style = Style::new().fg(Color::DarkGray);
+pub(crate) const MODAL_HINT: Style = Style::new().fg(Color::Gray);
 
 /// Selected/highlighted list item: blue background, black text (matches file tree).
 pub(crate) const MODAL_SELECTED: Style =
@@ -34,6 +34,10 @@ pub(crate) const MODAL_SEARCH_TEXT: Style = Style::new().fg(Color::White);
 
 /// Search placeholder text when the input is empty.
 pub(crate) const MODAL_SEARCH_PLACEHOLDER: Style = Style::new().fg(Color::DarkGray);
+
+/// Block cursor — inverted colors so the character underneath stays visible.
+/// Blink is driven by software toggle in `App::tick_cursor`.
+pub(crate) const MODAL_CURSOR: Style = Style::new().fg(Color::Black).bg(Color::White);
 
 // ── Help overlay styles ────────────────────────────────────────────────
 

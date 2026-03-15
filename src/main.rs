@@ -1,4 +1,5 @@
 mod app;
+mod file_ops;
 mod file_tree;
 mod input;
 mod markdown;
@@ -101,6 +102,13 @@ fn run_loop(
                 }
                 _ => {}
             }
+        }
+
+        // Force redraw when cursor-bearing overlays are active (for blink animation).
+        let had_cursor = app.cursor_visible;
+        app.tick_cursor();
+        if app.cursor_visible != had_cursor && (app.show_file_op || app.show_links) {
+            needs_redraw = true;
         }
 
         if app.should_quit {

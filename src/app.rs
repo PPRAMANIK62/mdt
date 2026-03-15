@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::text::Line;
@@ -11,6 +11,17 @@ use tui_tree_widget::{TreeItem, TreeState};
 
 use crate::file_tree;
 use crate::markdown::{render_markdown_blocks, rewrap_blocks, LinkInfo, RenderedBlock};
+
+/// Active file operation (overlay, not a mode).
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub(crate) enum FileOp {
+    CreateFile { parent_dir: PathBuf },
+    CreateDir { parent_dir: PathBuf },
+    Rename { target: PathBuf, is_dir: bool },
+    Delete { target: PathBuf, is_dir: bool, name: String },
+    Move { source: PathBuf, is_dir: bool },
+}
 
 /// Current input mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -131,11 +142,16 @@ pub struct App {
     pub(crate) command_buffer: String,
     pub(crate) show_help: bool,
     pub(crate) show_links: bool,
+    pub(crate) show_file_op: bool,
+    pub(crate) file_op: Option<FileOp>,
+    pub(crate) file_op_input: String,
     pub(crate) link_picker_selected: usize,
     pub(crate) link_search_query: String,
     pub(crate) show_file_tree: bool,
     pub(crate) bg_color: ratatui::style::Color,
     pub(crate) root_path: PathBuf,
+    pub(crate) cursor_visible: bool,
+    pub(crate) cursor_last_toggle: Instant,
 }
 
 impl App {
@@ -180,11 +196,16 @@ impl App {
             command_buffer: String::new(),
             show_help: false,
             show_links: false,
+            show_file_op: false,
+            file_op: None,
+            file_op_input: String::new(),
             link_picker_selected: 0,
             link_search_query: String::new(),
             show_file_tree: false,
             bg_color,
             root_path,
+            cursor_visible: true,
+            cursor_last_toggle: Instant::now(),
         })
     }
 
@@ -198,6 +219,11 @@ impl App {
 
         match self.mode {
             AppMode::Normal => {
+                // File ops overlay — handles its own keys.
+                if self.show_file_op {
+                    self.handle_file_op_key(key);
+                    return;
+                }
                 // Link picker overlay — handles its own keys.
                 if self.show_links {
                     match key.code {
@@ -260,6 +286,16 @@ impl App {
 }
 
 impl App {
+    /// Toggle the cursor blink state every ~530ms.
+    pub fn tick_cursor(&mut self) {
+        if self.cursor_last_toggle.elapsed() >= Duration::from_millis(530) {
+            self.cursor_visible = !self.cursor_visible;
+            self.cursor_last_toggle = Instant::now();
+        }
+    }
+}
+
+impl App {
     /// Get the display path for the current file (relative to root).
     pub(crate) fn display_file_path(&self) -> String {
         self.document
@@ -267,6 +303,20 @@ impl App {
             .as_ref()
             .map(|p| p.strip_prefix(&self.root_path).unwrap_or(p).to_string_lossy().into_owned())
             .unwrap_or_default()
+    }
+}
+
+impl App {
+    pub(crate) fn refresh_tree(&mut self, select_id: Option<&str>) {
+        if let Ok((items, map)) = file_tree::build_tree_items(&self.root_path) {
+            self.tree.tree_items = items;
+            self.tree.path_map = map;
+            self.tree.filtered_tree_items = None;
+            self.tree.filtered_path_map = None;
+            if let Some(id) = select_id {
+                self.tree.tree_state.select(vec![id.to_string()]);
+            }
+        }
     }
 }
 

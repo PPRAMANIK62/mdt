@@ -39,9 +39,10 @@ pub(crate) fn render_modal_frame(
     frame: &mut Frame,
     area: Rect,
     title: &str,
-    search_query: Option<&str>,
+    input: Option<(&str, &str)>,
     shortcuts: &[(&str, &str)],
     bg_color: Color,
+    cursor_visible: bool,
 ) -> Rect {
     frame.render_widget(Clear, area);
 
@@ -55,7 +56,7 @@ pub(crate) fn render_modal_frame(
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    let has_search = search_query.is_some();
+    let has_input = input.is_some();
     let has_shortcuts = !shortcuts.is_empty();
 
     let mut constraints: Vec<Constraint> = Vec::new();
@@ -65,8 +66,8 @@ pub(crate) fn render_modal_frame(
     // Gap after title
     constraints.push(Constraint::Length(1));
 
-    // Zone 2: search bar (optional)
-    if has_search {
+    // Zone 2: input bar (optional)
+    if has_input {
         constraints.push(Constraint::Length(1));
         // Gap after search
         constraints.push(Constraint::Length(1));
@@ -104,22 +105,32 @@ pub(crate) fn render_modal_frame(
     ]);
     frame.render_widget(Paragraph::new(title_line), title_area);
 
-    // ── Zone 2: Search bar (optional) ──────────────────────────────────
-    if let Some(query) = search_query {
-        let search_area = chunks[idx];
+    // ── Zone 2: Input bar (optional) ───────────────────────────────────
+    if let Some((text, placeholder)) = input {
+        let input_area = chunks[idx];
         idx += 1;
         // Skip gap
         idx += 1;
 
-        let search_line = if query.is_empty() {
-            Line::from(Span::styled("Search", theme::MODAL_SEARCH_PLACEHOLDER))
-        } else {
+        let input_line = if text.is_empty() {
+            let first: String = placeholder.chars().next().map_or(" ".into(), |c| c.to_string());
+            let skip = first.len();
+            let rest = placeholder.get(skip..).unwrap_or("");
+            let cursor_style =
+                if cursor_visible { theme::MODAL_CURSOR } else { theme::MODAL_SEARCH_PLACEHOLDER };
             Line::from(vec![
-                Span::styled(query, theme::MODAL_SEARCH_TEXT),
-                Span::styled("█", theme::MODAL_SEARCH_TEXT),
+                Span::styled(first, cursor_style),
+                Span::styled(rest, theme::MODAL_SEARCH_PLACEHOLDER),
+            ])
+        } else {
+            let cursor_style =
+                if cursor_visible { theme::MODAL_CURSOR } else { theme::MODAL_SEARCH_TEXT };
+            Line::from(vec![
+                Span::styled(text, theme::MODAL_SEARCH_TEXT),
+                Span::styled(" ", cursor_style),
             ])
         };
-        frame.render_widget(Paragraph::new(search_line), search_area);
+        frame.render_widget(Paragraph::new(input_line), input_area);
     }
 
     // ── Zone 3: Content area ───────────────────────────────────────────
