@@ -110,7 +110,9 @@ pub(super) fn wrap_spans(spans: &[Span], max_width: usize) -> Vec<Vec<Span<'stat
             if let Some(last) = cur_spans.last_mut() {
                 if last.style == g.style {
                     // Merge into existing span.
-                    last.content = std::borrow::Cow::Owned(format!("{}{}", last.content, g.text));
+                    let mut s = std::mem::take(&mut last.content).into_owned();
+                    s.push_str(g.text);
+                    last.content = std::borrow::Cow::Owned(s);
                     continue;
                 }
             }

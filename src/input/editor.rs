@@ -113,6 +113,7 @@ impl App {
                     None
                 };
                 self.document.rendered_lines = rewrap_blocks(&blocks, width);
+                self.document.rebuild_lower_cache();
                 self.document.rendered_blocks = blocks;
                 self.document.links = deduplicate_links(links);
                 self.editor.is_dirty = false;

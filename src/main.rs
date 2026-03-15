@@ -21,7 +21,7 @@ use ratatui::Terminal;
 
 use app::App;
 
-const EVENT_POLL_MS: u64 = 250;
+const EVENT_POLL_MS: u64 = 50;
 
 fn main() -> anyhow::Result<()> {
     // CLI args: `mdt [path]` defaulting to current directory.
