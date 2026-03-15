@@ -108,7 +108,10 @@ pub fn draw_welcome(frame: &mut Frame, area: Rect, bg_color: Color) {
 
     if show_version {
         lines.push(Line::from(""));
-        lines.push(Line::from(Span::styled("v0.1.0", Style::default().fg(Color::DarkGray))));
+        lines.push(Line::from(Span::styled(
+            concat!("v", env!("CARGO_PKG_VERSION")),
+            Style::default().fg(Color::DarkGray),
+        )));
     }
 
     if !show_logo {

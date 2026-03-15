@@ -2,6 +2,8 @@ mod app;
 mod file_ops;
 mod file_tree;
 mod input;
+#[cfg(test)]
+mod integration_tests;
 mod markdown;
 #[cfg(test)]
 mod test_util;
@@ -11,6 +13,7 @@ use std::io;
 use std::path::PathBuf;
 use std::time::Duration;
 
+use clap::Parser;
 use crossterm::event::{self, Event, KeyEventKind};
 use crossterm::execute;
 use crossterm::terminal::{
@@ -23,9 +26,21 @@ use app::App;
 
 const EVENT_POLL_MS: u64 = 50;
 
+#[derive(Parser)]
+#[command(name = "mdt", about = "Terminal Markdown Viewer")]
+struct Cli {
+    /// Directory or file to open (defaults to current directory)
+    #[arg(default_value = ".")]
+    path: PathBuf,
+
+    /// Maximum file size in bytes (default: 5000000 = 5MB)
+    #[arg(long, default_value_t = App::DEFAULT_MAX_FILE_SIZE)]
+    max_file_size: u64,
+}
+
 fn main() -> anyhow::Result<()> {
-    // CLI args: `mdt [path]` defaulting to current directory.
-    let path = std::env::args().nth(1).map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."));
+    let cli = Cli::parse();
+    let path = cli.path;
 
     // Pre-warm syntax highlighting data on a background thread so the first
     // file open with code blocks doesn't stall the UI for 100-300ms.
@@ -49,6 +64,16 @@ fn main() -> anyhow::Result<()> {
     };
 
     let mut app = App::new(&path, bg_color)?;
+    app.max_file_size = cli.max_file_size;
+
+    // Acquire an advisory lock to prevent concurrent mdt instances on the same directory.
+    let lock_path = app.root_path.join(".mdt.lock");
+    let lock_file =
+        std::fs::OpenOptions::new().create(true).write(true).truncate(true).open(&lock_path)?;
+    use fs2::FileExt;
+    if lock_file.try_lock_exclusive().is_err() {
+        anyhow::bail!("another mdt instance is already running on {}", app.root_path.display());
+    }
 
     // --- Terminal setup ---
     enable_raw_mode()?;
@@ -72,6 +97,10 @@ fn main() -> anyhow::Result<()> {
     disable_raw_mode()?;
     execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
     terminal.show_cursor()?;
+
+    // Release advisory lock and clean up lock file.
+    drop(lock_file);
+    let _ = std::fs::remove_file(&lock_path);
 
     result
 }

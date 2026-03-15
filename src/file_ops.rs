@@ -60,17 +60,13 @@ pub fn create_file(root: &Path, base: &Path, input: &str) -> Result<PathBuf> {
     }
 
     // Atomically create — fails if the file already exists (no TOCTOU race).
-    OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&target)
-        .map_err(|e| {
-            if e.kind() == std::io::ErrorKind::AlreadyExists {
-                anyhow::anyhow!("file already exists: {}", target.display())
-            } else {
-                e.into()
-            }
-        })?;
+    OpenOptions::new().write(true).create_new(true).open(&target).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::AlreadyExists {
+            anyhow::anyhow!("file already exists: {}", target.display())
+        } else {
+            e.into()
+        }
+    })?;
     fs::canonicalize(&target).map_err(Into::into)
 }
 

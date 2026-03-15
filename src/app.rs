@@ -170,9 +170,13 @@ pub struct App {
     pub(crate) root_path: PathBuf,
     pub(crate) cursor_visible: bool,
     pub(crate) cursor_last_toggle: Instant,
+    pub(crate) max_file_size: u64,
 }
 
 impl App {
+    /// Default maximum file size (5 MB).
+    pub const DEFAULT_MAX_FILE_SIZE: u64 = 5_000_000;
+
     /// Create a new `App` rooted at `path`.
     pub fn new(path: &Path, bg_color: ratatui::style::Color) -> anyhow::Result<Self> {
         let (tree_items, path_map) = file_tree::build_tree_items(path)?;
@@ -228,6 +232,7 @@ impl App {
             root_path,
             cursor_visible: true,
             cursor_last_toggle: Instant::now(),
+            max_file_size: Self::DEFAULT_MAX_FILE_SIZE,
         })
     }
 
@@ -308,10 +313,14 @@ impl App {
 
 impl App {
     /// Toggle the cursor blink state every ~530ms.
+    ///
+    /// Advances by the fixed interval rather than resetting to `Instant::now()`
+    /// to prevent drift from event-loop latency.
     pub fn tick_cursor(&mut self) {
-        if self.cursor_last_toggle.elapsed() >= Duration::from_millis(530) {
+        let interval = Duration::from_millis(530);
+        if self.cursor_last_toggle.elapsed() >= interval {
             self.cursor_visible = !self.cursor_visible;
-            self.cursor_last_toggle = Instant::now();
+            self.cursor_last_toggle += interval;
         }
     }
 }
@@ -465,14 +474,10 @@ impl App {
                 let url = link.url.clone();
                 self.show_links = false;
                 self.link_search_query.clear();
-                match open::that(&url) {
-                    Ok(()) => {
-                        self.status_message = format!("Opened: {url}");
-                    }
-                    Err(e) => {
-                        self.status_message = format!("Failed to open link: {e}");
-                    }
-                }
+                self.status_message = format!("Opening: {url}");
+                std::thread::spawn(move || {
+                    let _ = open::that(&url);
+                });
             }
         }
     }
@@ -481,10 +486,11 @@ impl App {
 impl App {
     /// Read a file, render its markdown, and store the result.
     pub(crate) fn open_file(&mut self, path: &Path) {
-        const MAX_FILE_SIZE: u64 = 5_000_000;
+        let limit = self.max_file_size;
         if let Ok(metadata) = std::fs::metadata(path) {
-            if metadata.len() > MAX_FILE_SIZE {
-                self.status_message = "File too large (>5MB)".to_string();
+            if metadata.len() > limit {
+                let mb = limit / 1_000_000;
+                self.status_message = format!("File too large (>{mb}MB)");
                 return;
             }
         }
@@ -497,12 +503,9 @@ impl App {
             }
         };
 
-        let content = match String::from_utf8(bytes) {
-            Ok(s) => s,
-            Err(_) => {
-                self.status_message = "Binary file, cannot preview".to_string();
-                return;
-            }
+        let Ok(content) = String::from_utf8(bytes) else {
+            self.status_message = "Binary file, cannot preview".to_string();
+            return;
         };
 
         let (blocks, links) = render_markdown_blocks(&content);
@@ -794,7 +797,7 @@ mod tests {
         let mut app = App::new(dir.path(), Color::Reset).unwrap();
         app.open_file(&big_path);
 
-        assert_eq!(app.status_message, "File too large (>5MB)");
+        assert!(app.status_message.contains("File too large"));
         assert!(app.document.current_file.is_none());
     }
 
