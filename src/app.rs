@@ -489,28 +489,37 @@ impl App {
             }
         }
 
-        match std::fs::read_to_string(path) {
-            Ok(content) => {
-                let (blocks, links) = render_markdown_blocks(&content);
-                let links = deduplicate_links(links);
-                let width = if self.document.viewport_width > 0 {
-                    Some(self.document.viewport_width)
-                } else {
-                    None
-                };
-                self.document.rendered_lines = rewrap_blocks(&blocks, width);
-                self.document.rebuild_lower_cache();
-                self.document.rendered_blocks = blocks;
-                self.document.links = links;
-                self.document.file_content = content;
-                self.document.current_file = Some(path.to_path_buf());
-                self.document.scroll_offset = 0;
-                self.status_message.clear();
-            }
+        let bytes = match std::fs::read(path) {
+            Ok(b) => b,
             Err(e) => {
                 self.status_message = format!("Error: {e}");
+                return;
             }
-        }
+        };
+
+        let content = match String::from_utf8(bytes) {
+            Ok(s) => s,
+            Err(_) => {
+                self.status_message = "Binary file, cannot preview".to_string();
+                return;
+            }
+        };
+
+        let (blocks, links) = render_markdown_blocks(&content);
+        let links = deduplicate_links(links);
+        let width = if self.document.viewport_width > 0 {
+            Some(self.document.viewport_width)
+        } else {
+            None
+        };
+        self.document.rendered_lines = rewrap_blocks(&blocks, width);
+        self.document.rebuild_lower_cache();
+        self.document.rendered_blocks = blocks;
+        self.document.links = links;
+        self.document.file_content = content;
+        self.document.current_file = Some(path.to_path_buf());
+        self.document.scroll_offset = 0;
+        self.status_message.clear();
     }
 }
 

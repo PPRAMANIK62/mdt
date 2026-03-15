@@ -2,7 +2,7 @@
 //!
 //! All functions are stateless — they take paths, perform filesystem work,
 //! and return results. No dependency on application state.
-use std::fs;
+use std::fs::{self, OpenOptions};
 use std::path::{Component, Path, PathBuf};
 
 use anyhow::{bail, Result};
@@ -50,10 +50,6 @@ pub fn create_file(root: &Path, base: &Path, input: &str) -> Result<PathBuf> {
         target.set_file_name(name);
     }
 
-    if target.exists() {
-        bail!("file already exists: {}", target.display());
-    }
-
     if let Some(parent) = target.parent() {
         fs::create_dir_all(parent)?;
     }
@@ -63,7 +59,18 @@ pub fn create_file(root: &Path, base: &Path, input: &str) -> Result<PathBuf> {
         ensure_within_root(root, parent)?;
     }
 
-    fs::write(&target, "")?;
+    // Atomically create — fails if the file already exists (no TOCTOU race).
+    OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&target)
+        .map_err(|e| {
+            if e.kind() == std::io::ErrorKind::AlreadyExists {
+                anyhow::anyhow!("file already exists: {}", target.display())
+            } else {
+                e.into()
+            }
+        })?;
     fs::canonicalize(&target).map_err(Into::into)
 }
 
@@ -104,8 +111,13 @@ pub fn rename_entry(root: &Path, path: &Path, new_name: &str) -> Result<PathBuf>
         bail!("destination already exists: {}", new_path.display());
     }
 
+    // Validate destination is within root *before* performing the rename.
+    // The destination doesn't exist yet, so check its parent.
+    if let Some(parent) = new_path.parent() {
+        ensure_within_root(root, parent)?;
+    }
+
     fs::rename(path, &new_path)?;
-    ensure_within_root(root, &new_path)?;
 
     fs::canonicalize(&new_path).map_err(Into::into)
 }
@@ -120,6 +132,9 @@ pub fn move_entry(root: &Path, source: &Path, dest_input: &str) -> Result<PathBu
     let dest_dir = root.join(dest_input);
     fs::create_dir_all(&dest_dir)?;
 
+    // Validate destination is within root *before* performing the rename.
+    ensure_within_root(root, &dest_dir)?;
+
     let file_name = source.file_name().ok_or_else(|| anyhow::anyhow!("source has no file name"))?;
     let new_path = dest_dir.join(file_name);
 
@@ -128,7 +143,6 @@ pub fn move_entry(root: &Path, source: &Path, dest_input: &str) -> Result<PathBu
     }
 
     fs::rename(source, &new_path)?;
-    ensure_within_root(root, &new_path)?;
 
     fs::canonicalize(&new_path).map_err(Into::into)
 }
