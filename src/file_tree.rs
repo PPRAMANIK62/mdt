@@ -99,6 +99,82 @@ fn build_items_recursive(
     Ok(items)
 }
 
+/// Rebuild [`TreeItem`]s from an existing `path_map` **without** filesystem access.
+///
+/// Empty directories (no `.md` descendants) are pruned from both the returned
+/// tree and from `path_map`, matching [`build_tree_items`] behaviour.
+///
+/// This is cheaper than [`build_tree_items`] because it skips all `fs::read_dir`
+/// calls — the expensive I/O that dominates incremental refreshes.
+pub fn rebuild_tree_from_map(
+    path_map: &mut HashMap<String, (PathBuf, bool)>,
+) -> Vec<TreeItem<'static, String>> {
+    // Pre-group entries by parent directory for efficient lookup.
+    let mut by_parent: HashMap<&str, Vec<(&str, &str, bool)>> = HashMap::new();
+    for (rel, (_, is_dir)) in path_map.iter() {
+        let (parent, name) = match rel.rfind('/') {
+            Some(pos) => (&rel[..pos], &rel[pos + 1..]),
+            None => ("", rel.as_str()),
+        };
+        by_parent.entry(parent).or_default().push((name, rel, *is_dir));
+    }
+
+    // Sort each group: directories first, then case-insensitive alphabetical.
+    for children in by_parent.values_mut() {
+        children.sort_by(|a, b| {
+            b.2.cmp(&a.2).then_with(|| a.0.to_lowercase().cmp(&b.0.to_lowercase()))
+        });
+    }
+
+    let mut pruned: Vec<String> = Vec::new();
+    let items = build_level_from_map("", &by_parent, &mut pruned);
+
+    for key in pruned {
+        path_map.remove(&key);
+    }
+
+    items
+}
+
+/// Recursively build one level of the tree from the pre-grouped map.
+fn build_level_from_map(
+    prefix: &str,
+    by_parent: &HashMap<&str, Vec<(&str, &str, bool)>>,
+    pruned: &mut Vec<String>,
+) -> Vec<TreeItem<'static, String>> {
+    let Some(children) = by_parent.get(prefix) else {
+        return Vec::new();
+    };
+
+    let mut items = Vec::new();
+    for &(name, rel, is_dir) in children {
+        if is_dir {
+            let sub_items = build_level_from_map(rel, by_parent, pruned);
+            if sub_items.is_empty() {
+                pruned.push(rel.to_string());
+                continue;
+            }
+            if let Ok(item) = TreeItem::new(
+                rel.to_string(),
+                Line::from(Span::styled(
+                    format!("{name}/"),
+                    Style::new().fg(Color::Blue).add_modifier(Modifier::BOLD),
+                )),
+                sub_items,
+            ) {
+                items.push(item);
+            }
+        } else {
+            items.push(TreeItem::new_leaf(
+                rel.to_string(),
+                Line::from(Span::styled(name.to_string(), Style::new().fg(Color::White))),
+            ));
+        }
+    }
+
+    items
+}
+
 /// Check if a filename ends with `.md` (case-insensitive).
 fn has_md_extension(name: &str) -> bool {
     Path::new(name).extension().is_some_and(|ext| ext.eq_ignore_ascii_case("md"))

@@ -74,7 +74,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     }
 
     if app.show_links {
-        let filtered_indices = app.filtered_link_indices();
+        let filtered_indices: Vec<usize> = app.filtered_link_indices().to_vec();
         let filtered_links: Vec<&LinkInfo> =
             filtered_indices.iter().filter_map(|&i| app.document.links.get(i)).collect();
         draw_links_overlay(

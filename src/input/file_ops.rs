@@ -54,7 +54,7 @@ impl App {
                             .to_string_lossy()
                             .into_owned()
                             .replace('\\', "/");
-                        self.refresh_tree(Some(&rel));
+                        self.refresh_tree_add(&path, false, Some(&rel));
                         self.open_file(&path);
                         self.status_message = format!("Created {rel}");
                     }
@@ -73,7 +73,7 @@ impl App {
                             .to_string_lossy()
                             .into_owned()
                             .replace('\\', "/");
-                        self.refresh_tree(Some(&rel));
+                        self.refresh_tree_add(&path, true, Some(&rel));
                         self.status_message = format!("Created {rel}/");
                     }
                     Err(e) => self.status_message = format!("Error: {e}"),
@@ -91,13 +91,13 @@ impl App {
                             self.document.links.clear();
                             self.document.scroll_offset = 0;
                         }
-                        self.refresh_tree(None);
+                        self.refresh_tree_remove(&target, None);
                         self.status_message = format!("Deleted {name}");
                     }
                     Err(e) => self.status_message = format!("Error: {e}"),
                 }
             }
-            FileOp::Rename { target, is_dir: _ } => {
+            FileOp::Rename { target, is_dir } => {
                 if input.is_empty() {
                     return;
                 }
@@ -111,15 +111,15 @@ impl App {
                             .into_owned()
                             .replace('\\', "/");
                         if is_current {
-                            self.document.current_file = Some(new_path);
+                            self.document.current_file = Some(new_path.clone());
                         }
-                        self.refresh_tree(Some(&rel));
+                        self.refresh_tree_move(&target, &new_path, is_dir, Some(&rel));
                         self.status_message = format!("Renamed to {rel}");
                     }
                     Err(e) => self.status_message = format!("Error: {e}"),
                 }
             }
-            FileOp::Move { source, is_dir: _ } => {
+            FileOp::Move { source, is_dir } => {
                 if input.is_empty() {
                     return;
                 }
@@ -133,9 +133,9 @@ impl App {
                             .into_owned()
                             .replace('\\', "/");
                         if is_current {
-                            self.document.current_file = Some(new_path);
+                            self.document.current_file = Some(new_path.clone());
                         }
-                        self.refresh_tree(Some(&rel));
+                        self.refresh_tree_move(&source, &new_path, is_dir, Some(&rel));
                         self.status_message = format!("Moved to {rel}");
                     }
                     Err(e) => self.status_message = format!("Error: {e}"),

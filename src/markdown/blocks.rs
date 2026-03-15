@@ -168,15 +168,17 @@ fn rewrap_code_block(
     // Code lines with borders.
     for line_spans in highlighted_lines {
         let content_width = spans_display_width(line_spans);
-        let truncated_spans = if content_width > max_width {
-            truncate_code_line(line_spans, max_width)
-        } else {
-            line_spans.clone()
-        };
-        let truncated_width = spans_display_width(&truncated_spans);
-        let padding = max_width.saturating_sub(truncated_width);
         let mut spans = vec![Span::styled("│ ", CODE_BORDER_STYLE)];
-        spans.extend(truncated_spans);
+        let truncated_width = if content_width > max_width {
+            let truncated = truncate_code_line(line_spans, max_width);
+            let w = spans_display_width(&truncated);
+            spans.extend(truncated);
+            w
+        } else {
+            spans.extend(line_spans.iter().cloned());
+            content_width
+        };
+        let padding = max_width.saturating_sub(truncated_width);
         spans.push(Span::styled(format!("{} │", " ".repeat(padding)), CODE_BORDER_STYLE));
         lines.push(Line::from(spans));
     }
