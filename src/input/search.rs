@@ -122,7 +122,11 @@ impl App {
         }
         let len = self.search.matches.len();
         self.search.current = if forward {
-            if self.search.current + 1 < len { self.search.current + 1 } else { 0 }
+            if self.search.current + 1 < len {
+                self.search.current + 1
+            } else {
+                0
+            }
         } else if self.search.current > 0 {
             self.search.current - 1
         } else {

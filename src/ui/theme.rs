@@ -10,7 +10,8 @@ use crate::palette;
 pub(crate) const MODAL_BORDER: Style = Style::new().fg(palette::BORDER);
 
 /// Title text: bold white, used in the top-left of the title bar.
-pub(crate) const MODAL_TITLE: Style = Style::new().fg(palette::FG_PRIMARY).add_modifier(Modifier::BOLD);
+pub(crate) const MODAL_TITLE: Style =
+    Style::new().fg(palette::FG_PRIMARY).add_modifier(Modifier::BOLD);
 
 /// Hint/muted text (footer, secondary info).
 pub(crate) const MODAL_HINT: Style = Style::new().fg(palette::FG_SECONDARY);
@@ -39,12 +40,14 @@ pub(crate) const MODAL_SEARCH_PLACEHOLDER: Style = Style::new().fg(palette::FG_M
 
 /// Block cursor — inverted colors so the character underneath stays visible.
 /// Blink is driven by software toggle in `App::tick_cursor`.
-pub(crate) const MODAL_CURSOR: Style = Style::new().fg(palette::HIGHLIGHT_FG).bg(palette::HIGHLIGHT_BG);
+pub(crate) const MODAL_CURSOR: Style =
+    Style::new().fg(palette::HIGHLIGHT_FG).bg(palette::HIGHLIGHT_BG);
 
 // ── Help overlay styles ────────────────────────────────────────────────
 
 /// Key binding label in the help overlay (bright cyan, bold — stands out).
-pub(crate) const HELP_KEY_STYLE: Style = Style::new().fg(palette::ACCENT_CYAN).add_modifier(Modifier::BOLD);
+pub(crate) const HELP_KEY_STYLE: Style =
+    Style::new().fg(palette::ACCENT_CYAN).add_modifier(Modifier::BOLD);
 
 /// Description text in the help overlay (muted gray — clearly secondary).
 pub(crate) const HELP_DESC_STYLE: Style = Style::new().fg(palette::FG_SECONDARY);

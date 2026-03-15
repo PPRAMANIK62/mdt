@@ -34,12 +34,11 @@ impl App {
                             KeyCode::Up => {
                                 let len = self.filtered_link_indices().len();
                                 if len > 0 {
-                                    self.link_picker.selected =
-                                        if self.link_picker.selected == 0 {
-                                            len.saturating_sub(1)
-                                        } else {
-                                            self.link_picker.selected - 1
-                                        };
+                                    self.link_picker.selected = if self.link_picker.selected == 0 {
+                                        len.saturating_sub(1)
+                                    } else {
+                                        self.link_picker.selected - 1
+                                    };
                                 }
                             }
                             KeyCode::Enter => {

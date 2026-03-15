@@ -4,11 +4,15 @@ use ratatui::style::{Modifier, Style};
 
 use crate::palette;
 
-pub(super) const H1_STYLE: Style = Style::new().add_modifier(Modifier::BOLD).fg(palette::ACCENT_CYAN);
-pub(super) const H2_STYLE: Style = Style::new().add_modifier(Modifier::BOLD).fg(palette::ACCENT_GREEN);
-pub(super) const H3_STYLE: Style = Style::new().add_modifier(Modifier::BOLD).fg(palette::ACCENT_YELLOW);
+pub(super) const H1_STYLE: Style =
+    Style::new().add_modifier(Modifier::BOLD).fg(palette::ACCENT_CYAN);
+pub(super) const H2_STYLE: Style =
+    Style::new().add_modifier(Modifier::BOLD).fg(palette::ACCENT_GREEN);
+pub(super) const H3_STYLE: Style =
+    Style::new().add_modifier(Modifier::BOLD).fg(palette::ACCENT_YELLOW);
 pub(super) const H4_STYLE: Style = Style::new().add_modifier(Modifier::BOLD).fg(palette::FG_MUTED);
-pub(super) const BOLD_STYLE: Style = Style::new().add_modifier(Modifier::BOLD).fg(palette::ACCENT_RED);
+pub(super) const BOLD_STYLE: Style =
+    Style::new().add_modifier(Modifier::BOLD).fg(palette::ACCENT_RED);
 pub(super) const ITALIC_STYLE: Style = Style::new().add_modifier(Modifier::ITALIC);
 pub(super) const STRIKETHROUGH_STYLE: Style = Style::new().add_modifier(Modifier::CROSSED_OUT);
 pub(super) const INLINE_CODE_STYLE: Style = Style::new().fg(palette::ACCENT_LIGHT_CYAN);

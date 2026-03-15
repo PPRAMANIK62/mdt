@@ -18,8 +18,7 @@ fn headings_stripped_and_styled() {
     let h1_line =
         text.lines.iter().find(|l| l.spans.iter().any(|s| s.content.contains("Heading 1")));
     assert!(h1_line.is_some(), "H1 heading not found");
-    let h1_span =
-        h1_line.unwrap().spans.iter().find(|s| s.content.contains("Heading 1")).unwrap();
+    let h1_span = h1_line.unwrap().spans.iter().find(|s| s.content.contains("Heading 1")).unwrap();
     assert!(h1_span.style.add_modifier.contains(Modifier::BOLD));
 }
 
@@ -216,10 +215,7 @@ fn table_header_is_bold() {
     for line in &text.lines {
         for span in &line.spans {
             if span.content.contains("Name") {
-                assert!(
-                    span.style.add_modifier.contains(Modifier::BOLD),
-                    "Header should be bold"
-                );
+                assert!(span.style.add_modifier.contains(Modifier::BOLD), "Header should be bold");
             }
         }
     }
@@ -301,8 +297,7 @@ fn blockquote_bars_on_all_wrapped_lines() {
 
 #[test]
 fn nested_blockquote_bars_on_wrapped() {
-    let input =
-        "> > This is a nested blockquote that should wrap with double bars on every line.";
+    let input = "> > This is a nested blockquote that should wrap with double bars on every line.";
     let text = render_at_width(input, 25);
     let content = text_content(&text);
     assert!(content.len() > 1, "Expected wrapping, got: {content:?}");
@@ -317,7 +312,8 @@ fn nested_blockquote_bars_on_wrapped() {
 
 #[test]
 fn list_hanging_indent() {
-    let input = "- This is a long list item that should wrap with a hanging indent on continuation lines.";
+    let input =
+        "- This is a long list item that should wrap with a hanging indent on continuation lines.";
     let text = render_at_width(input, 25);
     let content = text_content(&text);
     assert!(content.len() > 1, "Expected wrapping, got: {content:?}");
@@ -388,8 +384,7 @@ fn hr_default_width_without_constraint() {
 
 #[test]
 fn code_block_truncated_at_width() {
-    let input =
-        "```\nvery long line of code that definitely exceeds the width limit we set\n```";
+    let input = "```\nvery long line of code that definitely exceeds the width limit we set\n```";
     let text = render_at_width(input, 30);
     let content = text_content(&text);
     // All lines must fit within 30 columns.
