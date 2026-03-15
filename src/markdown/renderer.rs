@@ -239,8 +239,12 @@ impl Renderer {
             Tag::Image { .. }
             | Tag::FootnoteDefinition(_)
             | Tag::HtmlBlock
-            | Tag::MetadataBlock(_) => {}
-            _ => {}
+            | Tag::MetadataBlock(_)
+            | Tag::DefinitionList
+            | Tag::DefinitionListTitle
+            | Tag::DefinitionListDefinition
+            | Tag::Superscript
+            | Tag::Subscript => {}
         }
     }
 
@@ -327,8 +331,12 @@ impl Renderer {
             TagEnd::Image
             | TagEnd::FootnoteDefinition
             | TagEnd::HtmlBlock
-            | TagEnd::MetadataBlock(_) => {}
-            _ => {}
+            | TagEnd::MetadataBlock(_)
+            | TagEnd::DefinitionList
+            | TagEnd::DefinitionListTitle
+            | TagEnd::DefinitionListDefinition
+            | TagEnd::Superscript
+            | TagEnd::Subscript => {}
         }
     }
 

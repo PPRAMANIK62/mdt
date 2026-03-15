@@ -83,11 +83,13 @@ fn main() -> anyhow::Result<()> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    // Install panic hook to restore terminal on panic
+    // Install panic hook to restore terminal and clean up lock file on panic
     let original_hook = std::panic::take_hook();
+    let panic_lock_path = lock_path.clone();
     std::panic::set_hook(Box::new(move |panic_info| {
         let _ = disable_raw_mode();
         let _ = execute!(io::stdout(), LeaveAlternateScreen, crossterm::cursor::Show);
+        let _ = std::fs::remove_file(&panic_lock_path);
         original_hook(panic_info);
     }));
 

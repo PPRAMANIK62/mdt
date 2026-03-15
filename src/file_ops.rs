@@ -32,6 +32,23 @@ fn ensure_within_root(root: &Path, resolved: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Verify that the deepest existing ancestor of `path` is inside `root`.
+///
+/// Used to validate paths before creating intermediate directories, so that
+/// `create_dir_all` doesn't create directories outside root via symlinks.
+fn ensure_ancestor_within_root(root: &Path, path: &Path) -> Result<()> {
+    let mut ancestor = path;
+    loop {
+        if ancestor.exists() {
+            return ensure_within_root(root, ancestor);
+        }
+        match ancestor.parent() {
+            Some(parent) => ancestor = parent,
+            None => bail!("no existing ancestor found for {}", path.display()),
+        }
+    }
+}
+
 /// Create a markdown file at `base/input` within `root`.
 ///
 /// - Auto-appends `.md` if the input doesn't end with `.md` (case-insensitive).
@@ -50,13 +67,10 @@ pub fn create_file(root: &Path, base: &Path, input: &str) -> Result<PathBuf> {
         target.set_file_name(name);
     }
 
+    // Verify the path stays within root BEFORE creating any directories.
     if let Some(parent) = target.parent() {
+        ensure_ancestor_within_root(root, parent)?;
         fs::create_dir_all(parent)?;
-    }
-
-    // Verify the parent is within root (target itself doesn't exist yet).
-    if let Some(parent) = target.parent() {
-        ensure_within_root(root, parent)?;
     }
 
     // Atomically create — fails if the file already exists (no TOCTOU race).
@@ -78,8 +92,9 @@ pub fn create_dir(root: &Path, base: &Path, input: &str) -> Result<PathBuf> {
     reject_dotdot(input)?;
 
     let target = base.join(input);
+    // Verify the path stays within root BEFORE creating any directories.
+    ensure_ancestor_within_root(root, &target)?;
     fs::create_dir_all(&target)?;
-    ensure_within_root(root, &target)?;
 
     fs::canonicalize(&target).map_err(Into::into)
 }
@@ -126,10 +141,9 @@ pub fn move_entry(root: &Path, source: &Path, dest_input: &str) -> Result<PathBu
     reject_dotdot(dest_input)?;
 
     let dest_dir = root.join(dest_input);
+    // Validate destination is within root BEFORE creating any directories.
+    ensure_ancestor_within_root(root, &dest_dir)?;
     fs::create_dir_all(&dest_dir)?;
-
-    // Validate destination is within root *before* performing the rename.
-    ensure_within_root(root, &dest_dir)?;
 
     let file_name = source.file_name().ok_or_else(|| anyhow::anyhow!("source has no file name"))?;
     let new_path = dest_dir.join(file_name);

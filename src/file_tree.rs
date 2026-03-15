@@ -58,7 +58,13 @@ fn build_items_recursive(
     }
 
     // Sort: directories first, then case-insensitive alphabetical.
-    raw.sort_by(|a, b| b.2.cmp(&a.2).then_with(|| a.0.to_lowercase().cmp(&b.0.to_lowercase())));
+    raw.sort_by(|a, b| {
+        b.2.cmp(&a.2).then_with(|| {
+            a.0.bytes()
+                .map(|b| b.to_ascii_lowercase())
+                .cmp(b.0.bytes().map(|b| b.to_ascii_lowercase()))
+        })
+    });
 
     let mut items = Vec::new();
     for (name, abs_path, is_dir) in raw {
@@ -122,7 +128,11 @@ pub fn rebuild_tree_from_map(
     // Sort each group: directories first, then case-insensitive alphabetical.
     for children in by_parent.values_mut() {
         children.sort_by(|a, b| {
-            b.2.cmp(&a.2).then_with(|| a.0.to_lowercase().cmp(&b.0.to_lowercase()))
+            b.2.cmp(&a.2).then_with(|| {
+                a.0.bytes()
+                    .map(|b| b.to_ascii_lowercase())
+                    .cmp(b.0.bytes().map(|b| b.to_ascii_lowercase()))
+            })
         });
     }
 
