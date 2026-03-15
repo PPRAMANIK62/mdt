@@ -98,6 +98,7 @@ impl DocumentState {
         self.current_file = None;
         self.file_content.clear();
         self.rendered_lines.clear();
+        self.rendered_lines_lower.clear();
         self.rendered_blocks.clear();
         self.links.clear();
         self.scroll_offset = 0;
