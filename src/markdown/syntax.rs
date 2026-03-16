@@ -96,6 +96,49 @@ pub(crate) fn scope_matchers() -> &'static ScopeMatchers {
     MATCHERS.get_or_init(ScopeMatchers::new)
 }
 
+/// Pre-compile regex patterns for common languages by parsing a dummy snippet.
+///
+/// Syntect lazily compiles regexes on first `parse_line` call per syntax definition.
+/// Running this on a background thread at startup eliminates the ~30ms-per-language
+/// stall on the first real file open.
+pub(crate) fn prewarm_syntaxes() {
+    let ss = syntax_set();
+    let matchers = scope_matchers();
+    let langs = [
+        "rust",
+        "python",
+        "bash",
+        "javascript",
+        "typescript",
+        "go",
+        "c",
+        "cpp",
+        "java",
+        "json",
+        "yaml",
+        "toml",
+        "html",
+        "css",
+        "sql",
+        "ruby",
+        "markdown",
+    ];
+    for lang in &langs {
+        if let Some(syntax) = ss.find_syntax_by_token(lang) {
+            let mut state = ParseState::new(syntax);
+            let mut stack = ScopeStack::new();
+            // Parse a trivial line to force regex compilation for this syntax.
+            if let Ok(ops) = state.parse_line("x\n", ss) {
+                for (_s, op) in ScopeRegionIterator::new(&ops, "x\n") {
+                    let _ = stack.apply(op);
+                    // Touch scope_to_style to warm scope matcher paths.
+                    let _ = scope_to_style(&stack, matchers);
+                }
+            }
+        }
+    }
+}
+
 pub(super) fn no_color() -> bool {
     static NO_COLOR: OnceLock<bool> = OnceLock::new();
     *NO_COLOR.get_or_init(|| std::env::var("NO_COLOR").is_ok_and(|v| !v.is_empty()))

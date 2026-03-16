@@ -62,6 +62,12 @@ impl App {
         if let Some(first_item) = tree_items.first() {
             tree_state.select(vec![first_item.identifier().clone()]);
         }
+
+        // Initialize viewport dimensions from terminal size so the first file
+        // open can wrap to the correct width instead of wrapping with None
+        // (which forces an immediate re-wrap on the next draw frame).
+        let (init_width, init_height) = crossterm::terminal::size().unwrap_or((80, 24));
+
         Ok(Self {
             tree: TreeViewState {
                 tree_state,
@@ -80,8 +86,8 @@ impl App {
                 heading_line_offsets: Vec::new(),
                 block_line_starts: Vec::new(),
                 scroll_offset: 0,
-                viewport_height: 0,
-                viewport_width: 0,
+                viewport_height: init_height as usize,
+                viewport_width: init_width as usize,
             },
             search: SearchState::default(),
             editor: EditorState::default(),

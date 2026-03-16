@@ -43,12 +43,10 @@ fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let path = cli.path;
 
-    // Pre-warm syntax highlighting data on a background thread so the first
-    // file open with code blocks doesn't stall the UI for 100-300ms.
-    std::thread::spawn(|| {
-        crate::markdown::syntax::syntax_set();
-        crate::markdown::syntax::scope_matchers();
-    });
+    // Pre-warm syntax highlighting on a background thread: loads the SyntaxSet,
+    // ScopeMatchers, and pre-compiles regex patterns for common languages so the
+    // first file open doesn't stall the UI.
+    let syntax_warmup = std::thread::spawn(crate::markdown::syntax::prewarm_syntaxes);
 
     // Detect terminal background color for solid fill (prevents transparency).
     // Must be called before enable_raw_mode() since the crate manages its own raw mode.
@@ -97,6 +95,9 @@ fn main() -> anyhow::Result<()> {
         let _ = std::fs::remove_file(&panic_lock_path);
         original_hook(panic_info);
     }));
+
+    // Ensure syntax highlighting data is fully loaded before accepting user input.
+    let _ = syntax_warmup.join();
 
     // Run event loop; capture result so we always tear down.
     let result = run_loop(&mut terminal, &mut app);
