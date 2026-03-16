@@ -2,6 +2,12 @@
 name = "mdt"
 version = "0.1.0"
 edition = "2021"
+description = "A fast terminal-based Markdown viewer and editor built with Rust."
+license = "MIT"
+repository = "https://github.com/PPRAMANIK62/mdt"
+readme = "README.md"
+keywords = ["markdown", "terminal", "tui", "editor", "cli"]
+categories = ["command-line-utilities", "text-editors"]
 
 [dependencies]
 ratatui = "0.30"
