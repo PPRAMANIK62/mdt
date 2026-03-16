@@ -28,6 +28,8 @@ pub(crate) struct DocumentState {
     pub(crate) viewport_width: usize,
     pub(crate) rendered_blocks: Vec<RenderedBlock>,
     pub(crate) links: Vec<LinkInfo>,
+    pub(crate) heading_line_offsets: Vec<usize>,
+    pub(crate) block_line_starts: Vec<usize>,
 }
 
 impl DocumentState {
@@ -93,6 +95,39 @@ impl DocumentState {
         self.clamp_scroll();
     }
 
+    /// Rebuild the heading line-offset index from block_line_starts and rendered_blocks.
+    pub(crate) fn rebuild_heading_index(&mut self) {
+        self.heading_line_offsets = self
+            .block_line_starts
+            .iter()
+            .enumerate()
+            .filter_map(|(i, &line_start)| {
+                if let RenderedBlock::StyledLine { heading_level: Some(_), .. } =
+                    &self.rendered_blocks[i]
+                {
+                    Some(line_start)
+                } else {
+                    None
+                }
+            })
+            .collect();
+    }
+
+    pub(crate) fn jump_to_next_heading(&mut self) {
+        // Current heading sits at scroll_offset + 2 (due to scroll_to_line padding).
+        let current_pos = self.scroll_offset + 2;
+        if let Some(&target) = self.heading_line_offsets.iter().find(|&&o| o > current_pos) {
+            self.scroll_to_line(target);
+        }
+    }
+
+    pub(crate) fn jump_to_prev_heading(&mut self) {
+        let current_pos = self.scroll_offset + 2;
+        if let Some(&target) = self.heading_line_offsets.iter().rev().find(|&&o| o < current_pos) {
+            self.scroll_to_line(target);
+        }
+    }
+
     /// Reset all document state (e.g. after deleting the current file).
     pub(crate) fn clear(&mut self) {
         self.current_file = None;
@@ -101,6 +136,8 @@ impl DocumentState {
         self.rendered_lines_lower.clear();
         self.rendered_blocks.clear();
         self.links.clear();
+        self.heading_line_offsets.clear();
+        self.block_line_starts.clear();
         self.scroll_offset = 0;
     }
 }

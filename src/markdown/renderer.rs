@@ -79,6 +79,7 @@ pub(super) struct Renderer {
     /// Width of the current list marker (indent + bullet/number) for hanging indent.
     pub(super) list_marker_width: usize,
     pub(super) in_heading: bool,
+    pub(super) heading_level: Option<u8>,
     /// Whether we're inside a table.
     pub(super) in_table: bool,
     /// Column alignments for the current table.
@@ -108,6 +109,7 @@ impl Renderer {
             link_text: String::new(),
             link_infos: Vec::new(),
             in_heading: false,
+            heading_level: None,
             in_table: false,
             table_alignments: Vec::new(),
             table_rows: Vec::new(),
@@ -162,6 +164,14 @@ impl Renderer {
                 };
                 self.style_stack.push(style);
                 self.in_heading = true;
+                self.heading_level = Some(match level {
+                    HeadingLevel::H1 => 1,
+                    HeadingLevel::H2 => 2,
+                    HeadingLevel::H3 => 3,
+                    HeadingLevel::H4 => 4,
+                    HeadingLevel::H5 => 5,
+                    HeadingLevel::H6 => 6,
+                });
             }
             Tag::Paragraph => {
                 if self.needs_newline && !self.is_in_list_item() {
@@ -256,6 +266,7 @@ impl Renderer {
                 self.in_heading = false;
                 self.style_stack.pop();
                 self.flush_line();
+                self.heading_level = None;
                 self.needs_newline = true;
             }
             TagEnd::Paragraph => {
@@ -563,6 +574,7 @@ impl Renderer {
             spans,
             blockquote_depth: self.blockquote_depth,
             list_marker_width: self.list_marker_width,
+            heading_level: self.heading_level,
         });
     }
 

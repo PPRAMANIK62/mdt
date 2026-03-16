@@ -46,7 +46,7 @@ pub fn render_markdown(
     }
 
     let (blocks, _links) = render_markdown_blocks(input);
-    let lines = rewrap_blocks(&blocks, available_width);
+    let (lines, _block_starts) = rewrap_blocks(&blocks, available_width);
     Text::from(lines)
 }
 
@@ -73,6 +73,7 @@ pub(crate) fn render_markdown_blocks(input: &str) -> (Vec<RenderedBlock>, Vec<Li
                 spans: vec![Span::raw(l.to_string())],
                 blockquote_depth: 0,
                 list_marker_width: 0,
+                heading_level: None,
             })
             .collect();
 

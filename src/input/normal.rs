@@ -169,6 +169,13 @@ impl App {
                 }
             }
 
+            KeyCode::Char(']') if self.focus == Focus::Preview => {
+                self.document.jump_to_next_heading();
+            }
+            KeyCode::Char('[') if self.focus == Focus::Preview => {
+                self.document.jump_to_prev_heading();
+            }
+
             KeyCode::Char('q') => self.should_quit = true,
 
             _ => {}

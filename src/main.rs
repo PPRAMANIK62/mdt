@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use clap::Parser;
-use crossterm::event::{self, Event, KeyEventKind};
+use crossterm::event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyEventKind};
 use crossterm::execute;
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
@@ -79,7 +79,7 @@ fn main() -> anyhow::Result<()> {
     // --- Terminal setup ---
     enable_raw_mode()?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen)?;
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
@@ -88,7 +88,12 @@ fn main() -> anyhow::Result<()> {
     let panic_lock_path = lock_path.clone();
     std::panic::set_hook(Box::new(move |panic_info| {
         let _ = disable_raw_mode();
-        let _ = execute!(io::stdout(), LeaveAlternateScreen, crossterm::cursor::Show);
+        let _ = execute!(
+            io::stdout(),
+            LeaveAlternateScreen,
+            DisableMouseCapture,
+            crossterm::cursor::Show
+        );
         let _ = std::fs::remove_file(&panic_lock_path);
         original_hook(panic_info);
     }));
@@ -98,7 +103,7 @@ fn main() -> anyhow::Result<()> {
 
     // --- Terminal teardown (always runs) ---
     disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+    execute!(terminal.backend_mut(), LeaveAlternateScreen, DisableMouseCapture)?;
     terminal.show_cursor()?;
 
     // Release advisory lock and clean up lock file.
@@ -126,6 +131,10 @@ fn run_loop(
             match event {
                 Event::Key(key) if key.kind == KeyEventKind::Press => {
                     app.handle_event(key);
+                    needs_redraw = true;
+                }
+                Event::Mouse(mouse) => {
+                    app.handle_mouse(mouse);
                     needs_redraw = true;
                 }
                 Event::Resize(_, _) => {

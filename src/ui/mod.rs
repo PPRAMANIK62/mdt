@@ -32,16 +32,24 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
             Layout::horizontal([Constraint::Percentage(25), Constraint::Percentage(75)])
                 .split(main_area);
         file_list::draw_file_list(frame, app, main_chunks[0]);
+        app.file_list_area = Some(main_chunks[0]);
         let content_area = main_chunks[1];
         if let Some(ref textarea) = app.editor.textarea {
             editor::draw_editor(frame, textarea, content_area);
+            app.preview_area = None;
         } else {
+            app.preview_area = Some(content_area);
             preview::draw_preview(frame, app, content_area);
         }
-    } else if let Some(ref textarea) = app.editor.textarea {
-        editor::draw_editor(frame, textarea, main_area);
     } else {
-        preview::draw_preview(frame, app, main_area);
+        app.file_list_area = None;
+        if let Some(ref textarea) = app.editor.textarea {
+            editor::draw_editor(frame, textarea, main_area);
+            app.preview_area = None;
+        } else {
+            app.preview_area = Some(main_area);
+            preview::draw_preview(frame, app, main_area);
+        }
     }
 
     // --- Status bar ---

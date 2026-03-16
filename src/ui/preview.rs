@@ -6,7 +6,9 @@
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span, Text};
-use ratatui::widgets::{Block, Padding, Paragraph};
+use ratatui::widgets::{
+    Block, Padding, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState,
+};
 use ratatui::Frame;
 
 use crate::app::App;
@@ -32,9 +34,13 @@ pub fn draw_preview(frame: &mut Frame, app: &mut App, area: Rect) {
     // Re-render when viewport width changes (e.g. terminal resize, file tree toggle).
     let new_width = inner.width as usize;
     if new_width != app.document.viewport_width && app.document.current_file.is_some() {
-        app.document.rendered_lines = rewrap_blocks(&app.document.rendered_blocks, Some(new_width));
+        let (lines, block_line_starts) =
+            rewrap_blocks(&app.document.rendered_blocks, Some(new_width));
+        app.document.rendered_lines = lines;
+        app.document.block_line_starts = block_line_starts;
         app.document.rebuild_lower_cache();
         app.document.viewport_width = new_width;
+        app.document.rebuild_heading_index();
         // Clamp scroll offset after re-render
         let max_scroll = app.document.rendered_lines.len().saturating_sub(inner.height as usize);
         if app.document.scroll_offset > max_scroll {
@@ -99,6 +105,23 @@ pub fn draw_preview(frame: &mut Frame, app: &mut App, area: Rect) {
     // scroll((0, 0)) because we already sliced the lines ourselves.
     let paragraph = Paragraph::new(text).block(block).scroll((0, 0));
     frame.render_widget(paragraph, area);
+
+    // Scrollbar: only render when content exceeds viewport.
+    let total_lines = app.document.rendered_lines.len();
+    let viewport_height = app.document.viewport_height;
+    if total_lines > viewport_height {
+        let max_scroll = total_lines.saturating_sub(viewport_height);
+        let mut scrollbar_state =
+            ScrollbarState::new(max_scroll).position(app.document.scroll_offset);
+        let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+            .begin_symbol(None)
+            .end_symbol(None)
+            .thumb_symbol("┃")
+            .thumb_style(Style::default().fg(Color::DarkGray))
+            .track_symbol(Some(" "))
+            .track_style(Style::default());
+        frame.render_stateful_widget(scrollbar, area, &mut scrollbar_state);
+    }
 }
 
 /// Highlight all occurrences of `query` (lowercase) in a line by splitting spans.

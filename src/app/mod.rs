@@ -44,6 +44,8 @@ pub struct App {
     pub(crate) bg_color: ratatui::style::Color,
     pub(crate) root_path: PathBuf,
     pub(crate) max_file_size: u64,
+    pub(crate) preview_area: Option<ratatui::layout::Rect>,
+    pub(crate) file_list_area: Option<ratatui::layout::Rect>,
 }
 
 impl App {
@@ -73,6 +75,8 @@ impl App {
                 rendered_lines_lower: Vec::new(),
                 rendered_blocks: Vec::new(),
                 links: Vec::new(),
+                heading_line_offsets: Vec::new(),
+                block_line_starts: Vec::new(),
                 scroll_offset: 0,
                 viewport_height: 0,
                 viewport_width: 0,
@@ -93,6 +97,8 @@ impl App {
             bg_color,
             root_path,
             max_file_size: Self::DEFAULT_MAX_FILE_SIZE,
+            preview_area: None,
+            file_list_area: None,
         })
     }
 
@@ -148,13 +154,16 @@ impl App {
         } else {
             None
         };
-        self.document.rendered_lines = rewrap_blocks(&blocks, width);
+        let (rendered, block_line_starts) = rewrap_blocks(&blocks, width);
+        self.document.rendered_lines = rendered;
         self.document.rebuild_lower_cache();
+        self.document.block_line_starts = block_line_starts;
         self.document.rendered_blocks = blocks;
         self.document.links = links;
         self.document.file_content = content;
         self.document.current_file = Some(path.to_path_buf());
         self.document.scroll_offset = 0;
+        self.document.rebuild_heading_index();
         self.status_message.clear();
     }
 }

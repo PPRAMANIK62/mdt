@@ -18,6 +18,7 @@ pub(crate) const HELP_KEYS: &[(&str, &str)] = &[
     ("n/N", "Next/Previous match"),
     ("gg/G", "Top/Bottom"),
     ("Ctrl+d/u", "Half page down/up"),
+    ("[/]", "Previous/Next heading"),
     (":w", "Save"),
     (":q", "Quit"),
     ("o", "Open links"),

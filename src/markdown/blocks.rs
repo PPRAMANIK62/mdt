@@ -19,7 +19,12 @@ use super::wrap::wrap_spans;
 pub enum RenderedBlock {
     /// A single line of styled inline spans (paragraph text, heading, list item, etc.)
     /// These get word-wrapped to the target width.
-    StyledLine { spans: Vec<Span<'static>>, blockquote_depth: usize, list_marker_width: usize },
+    StyledLine {
+        spans: Vec<Span<'static>>,
+        blockquote_depth: usize,
+        list_marker_width: usize,
+        heading_level: Option<u8>,
+    },
     /// Pre-highlighted code block lines. These get truncated (not wrapped) to width.
     CodeBlock { lang: String, highlighted_lines: Vec<Vec<Span<'static>>>, blockquote_depth: usize },
     /// A horizontal rule that fills available width.
@@ -41,11 +46,13 @@ pub enum RenderedBlock {
 pub fn rewrap_blocks(
     blocks: &[RenderedBlock],
     available_width: Option<usize>,
-) -> Vec<Line<'static>> {
+) -> (Vec<Line<'static>>, Vec<usize>) {
     let mut lines = Vec::new();
+    let mut block_line_starts = Vec::with_capacity(blocks.len());
     for block in blocks {
+        block_line_starts.push(lines.len());
         match block {
-            RenderedBlock::StyledLine { spans, blockquote_depth, list_marker_width } => {
+            RenderedBlock::StyledLine { spans, blockquote_depth, list_marker_width, .. } => {
                 rewrap_styled_line(
                     &mut lines,
                     spans,
@@ -74,7 +81,7 @@ pub fn rewrap_blocks(
             }
         }
     }
-    lines
+    (lines, block_line_starts)
 }
 
 // ── Styled line (paragraphs, headings, list items, etc.) ────────────────

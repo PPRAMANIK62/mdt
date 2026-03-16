@@ -111,10 +111,13 @@ impl App {
                 } else {
                     None
                 };
-                self.document.rendered_lines = rewrap_blocks(&blocks, width);
+                let (rendered, block_line_starts) = rewrap_blocks(&blocks, width);
+                self.document.rendered_lines = rendered;
+                self.document.block_line_starts = block_line_starts;
                 self.document.rebuild_lower_cache();
                 self.document.rendered_blocks = blocks;
                 self.document.links = deduplicate_links(links);
+                self.document.rebuild_heading_index();
                 self.editor.is_dirty = false;
 
                 self.status_message = "written".to_string();
