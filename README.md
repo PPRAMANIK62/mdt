@@ -15,6 +15,8 @@ Point `mdt` at a directory and you get a file tree, a fully rendered markdown pr
 - Collapsible file tree with directory navigation
 - File search/filter that narrows the tree as you type
 - Toggle the file tree on or off with a leader key
+- File management: create, delete, rename, and move files and directories
+- Nested path creation (e.g. `abc/def/notes.md`)
 
 **Markdown preview**
 
@@ -31,6 +33,8 @@ Point `mdt` at a directory and you get a file tree, a fully rendered markdown pr
 - Horizontal rules
 - Links with a searchable link picker overlay
 - Autolinks
+- Scrollbar that appears when content exceeds the viewport
+- Heading jump navigation (`[` / `]`)
 
 **Editor**
 
@@ -47,12 +51,14 @@ Point `mdt` at a directory and you get a file tree, a fully rendered markdown pr
 
 **Terminal integration**
 
+- Mouse support: scroll wheel to scroll, click to switch panes
 - Width-aware text wrapping for paragraphs, headings, blockquotes, and lists
 - Code block and table truncation for narrow terminals
 - Terminal background color detection (prevents transparency bleed)
 - `NO_COLOR` environment variable support
 - Dirty-flag rendering (only redraws when something changes)
 - Pre-warmed syntax highlighting on a background thread
+- Advisory file locking to prevent concurrent instance conflicts
 - Welcome screen with ASCII art logo
 - Help overlay and link picker modal
 - Panic-safe terminal teardown
@@ -76,10 +82,14 @@ The binary will be at `target/release/mdt`.
 ## Usage
 
 ```
-mdt [path]
+mdt [path] [--max-file-size <bytes>]
 ```
 
 Opens the given directory (or file). Defaults to the current directory if no path is provided.
+
+| Flag | Description |
+|------|-------------|
+| `--max-file-size <bytes>` | Maximum file size to open (default: 10 MB) |
 
 When `mdt` starts, you'll see the welcome screen. Press `Space+e` to open the file tree, navigate to a markdown file, and press `Enter` to preview it.
 
@@ -104,6 +114,18 @@ When `mdt` starts, you'll see the welcome screen. Press `Space+e` to open the fi
 | `h` / `Left` | Collapse directory |
 | `l` / `Right` | Expand directory |
 | `Space+e` | Toggle file tree visibility |
+| `a` | Create new file |
+| `A` | Create new directory |
+| `d` | Delete file or directory |
+| `r` | Rename file or directory |
+| `m` | Move file or directory |
+
+### Preview
+
+| Key | Action |
+|-----|--------|
+| `[` | Jump to previous heading |
+| `]` | Jump to next heading |
 
 ### Editor
 
