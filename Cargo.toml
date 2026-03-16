@@ -1,5 +1,5 @@
 [package]
-name = "mdt"
+name = "mdtui"
 version = "0.1.0"
 edition = "2021"
 description = "A fast terminal-based Markdown viewer and editor built with Rust."
