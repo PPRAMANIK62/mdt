@@ -63,13 +63,13 @@ Point `mdt` at a directory and you get a file tree, a fully rendered markdown pr
 
 ## Installation
 
-Install from source with Cargo:
+Install from [crates.io](https://crates.io/crates/mdtui):
 
 ```
-cargo install --path .
+cargo install mdtui
 ```
 
-Or build manually:
+Or build from source:
 
 ```
 cargo build --release
