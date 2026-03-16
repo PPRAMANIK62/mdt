@@ -48,4 +48,5 @@ pub(crate) enum Overlay {
     Help,
     LinkPicker,
     FileOp(FileOp),
+    FileFinder,
 }

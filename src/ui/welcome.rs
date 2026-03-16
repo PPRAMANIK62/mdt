@@ -21,6 +21,7 @@ const KEYBINDINGS: &[(&str, &str)] = &[
     ("j/k", "Navigate files"),
     ("Enter", "Open file"),
     ("/", "Search"),
+    ("ff", "Find file"),
     ("?", "Help"),
     (":q", "Quit"),
 ];

@@ -2,6 +2,7 @@
 
 mod document;
 mod event;
+mod file_finder;
 mod link_picker;
 mod state;
 mod tree;
@@ -22,7 +23,7 @@ pub use types::{AppMode, Focus};
 pub(crate) use types::{FileOp, Overlay};
 
 pub(crate) use document::{DocumentState, TreeViewState};
-pub(crate) use state::{CursorState, EditorState, LinkPickerState, SearchState};
+pub(crate) use state::{CursorState, EditorState, FileFinderState, LinkPickerState, SearchState};
 
 /// Top-level application state.
 pub struct App {
@@ -31,6 +32,7 @@ pub struct App {
     pub(crate) tree: TreeViewState,
     pub(crate) document: DocumentState,
     pub(crate) link_picker: LinkPickerState,
+    pub(crate) file_finder: FileFinderState,
     pub(crate) cursor: CursorState,
     pub(crate) mode: AppMode,
     pub(crate) focus: Focus,
@@ -84,6 +86,7 @@ impl App {
             search: SearchState::default(),
             editor: EditorState::default(),
             link_picker: LinkPickerState::default(),
+            file_finder: FileFinderState::default(),
             cursor: CursorState { visible: true, last_toggle: Instant::now() },
             mode: AppMode::Normal,
             focus: Focus::FileList,

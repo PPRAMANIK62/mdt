@@ -30,6 +30,14 @@ pub(crate) struct LinkPickerState {
     pub(crate) cached_count: usize,
 }
 
+/// File finder overlay state.
+#[derive(Default)]
+pub(crate) struct FileFinderState {
+    pub(crate) query: String,
+    pub(crate) selected: usize,
+    pub(crate) results: Vec<(String, std::path::PathBuf)>,
+}
+
 /// Cursor blink state for overlays with text input.
 pub(crate) struct CursorState {
     pub(crate) visible: bool,

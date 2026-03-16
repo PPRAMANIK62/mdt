@@ -64,6 +64,10 @@ impl App {
                         }
                         return;
                     }
+                    Overlay::FileFinder => {
+                        self.handle_file_finder_key(key);
+                        return;
+                    }
                     Overlay::Help => {
                         if key.code == KeyCode::Esc || key.code == KeyCode::Char('?') {
                             self.overlay = Overlay::None;

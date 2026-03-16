@@ -1,4 +1,5 @@
 pub mod editor;
+mod file_finder;
 mod file_list;
 mod file_op;
 mod help;
@@ -73,6 +74,9 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
                 app.bg_color,
                 app.cursor.visible,
             );
+        }
+        Overlay::FileFinder => {
+            file_finder::draw_file_finder_overlay(frame, frame.area(), app);
         }
         Overlay::FileOp(_) => {
             file_op::draw_file_op_overlay(frame, frame.area(), app);

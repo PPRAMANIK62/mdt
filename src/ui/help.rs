@@ -15,6 +15,7 @@ pub(crate) const HELP_KEYS: &[(&str, &str)] = &[
     ("Spc+e", "Toggle file tree"),
     ("i/e", "Edit mode"),
     ("/", "Search"),
+    ("ff", "Find file"),
     ("n/N", "Next/Previous match"),
     ("gg/G", "Top/Bottom"),
     ("Ctrl+d/u", "Half page down/up"),
@@ -31,7 +32,7 @@ pub(crate) const HELP_KEYS: &[(&str, &str)] = &[
 ];
 
 pub(super) fn draw_help_overlay(frame: &mut Frame, area: Rect, bg_color: Color) {
-    let popup_area = modal::centered_rect(50, 26, area);
+    let popup_area = modal::centered_rect(50, 27, area);
     let content_area = modal::render_modal_frame(
         frame,
         popup_area,

@@ -31,6 +31,10 @@ impl App {
                         self.toggle_file_tree();
                         return;
                     }
+                    ('f', KeyCode::Char('f')) => {
+                        self.open_file_finder();
+                        return;
+                    }
                     _ => {} // expired or unrecognized — fall through
                 }
             }
@@ -105,6 +109,11 @@ impl App {
             // --- g: start pending key for gg (both focuses) ---
             KeyCode::Char('g') => {
                 self.pending_key = Some(('g', Instant::now()));
+            }
+
+            // --- f: start pending key for ff (file finder) ---
+            KeyCode::Char('f') => {
+                self.pending_key = Some(('f', Instant::now()));
             }
 
             // --- Space: start pending key for Space+e (leader key) ---
