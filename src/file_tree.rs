@@ -186,7 +186,7 @@ fn build_level_from_map(
 }
 
 /// Check if a filename ends with `.md` (case-insensitive).
-fn has_md_extension(name: &str) -> bool {
+pub(crate) fn has_md_extension(name: &str) -> bool {
     Path::new(name).extension().is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
 }
 

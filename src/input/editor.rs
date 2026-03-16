@@ -76,6 +76,7 @@ impl App {
 
         self.editor.textarea = Some(textarea);
         self.editor.is_dirty = false;
+        self.editor.external_change_detected = false;
         self.mode = AppMode::Insert;
         self.status_message = "-- INSERT --".to_string();
     }
@@ -84,8 +85,41 @@ impl App {
     pub(crate) fn exit_editor(&mut self) {
         self.editor.textarea = None;
         self.editor.is_dirty = false;
+        self.editor.external_change_detected = false;
         self.mode = AppMode::Normal;
         self.document.scroll_offset = 0;
+    }
+
+    /// Reload the editor content from disk (`:e` command).
+    pub(crate) fn reload_editor_from_disk(&mut self) {
+        let Some(ref path) = self.document.current_file else {
+            self.status_message = "No file path".to_string();
+            return;
+        };
+
+        let content = match std::fs::read_to_string(path) {
+            Ok(c) => c,
+            Err(e) => {
+                self.status_message = format!("Error reading: {e}");
+                return;
+            }
+        };
+
+        let mut textarea = TextArea::from(content.lines());
+        let file_path = self.display_file_path();
+        let title = if file_path.is_empty() {
+            " Editor ".to_string()
+        } else {
+            format!(" Editor: {} ", file_path)
+        };
+        textarea.set_block(Block::default().title(title).borders(Borders::ALL));
+        textarea.set_line_number_style(Style::default());
+
+        self.editor.textarea = Some(textarea);
+        self.editor.is_dirty = false;
+        self.editor.external_change_detected = false;
+        self.document.file_content = content;
+        self.status_message = "reloaded".to_string();
     }
 
     /// Save the editor content to disk, re-render markdown.
@@ -119,6 +153,7 @@ impl App {
                 self.document.links = deduplicate_links(links);
                 self.document.rebuild_heading_index();
                 self.editor.is_dirty = false;
+                self.editor.external_change_detected = false;
 
                 self.status_message = "written".to_string();
                 Ok(())
@@ -206,5 +241,58 @@ mod tests {
 
         let on_disk = std::fs::read_to_string(&file).unwrap();
         assert_eq!(on_disk, "\n", "empty editor should save as single newline");
+    }
+
+    #[test]
+    fn reload_editor_from_disk_updates_content() {
+        let dir = TempTestDir::new("mdt-test-editor-reload");
+        dir.create_file("test.md", "# Original");
+        let file = dir.path().join("test.md");
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        app.open_file(&file);
+        app.enter_editor();
+
+        // Overwrite on disk.
+        std::fs::write(&file, "# Reloaded").unwrap();
+        app.reload_editor_from_disk();
+
+        assert_eq!(app.document.file_content, "# Reloaded");
+        assert!(!app.editor.is_dirty);
+        assert!(!app.editor.external_change_detected);
+        assert_eq!(app.status_message, "reloaded");
+    }
+
+    #[test]
+    fn reload_editor_clears_flags() {
+        let dir = TempTestDir::new("mdt-test-editor-flags");
+        dir.create_file("test.md", "# Test");
+        let file = dir.path().join("test.md");
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        app.open_file(&file);
+        app.enter_editor();
+
+        app.editor.is_dirty = true;
+        app.editor.external_change_detected = true;
+
+        app.reload_editor_from_disk();
+
+        assert!(!app.editor.is_dirty);
+        assert!(!app.editor.external_change_detected);
+    }
+
+    #[test]
+    fn reload_editor_no_file_shows_error() {
+        let dir = TempTestDir::new("mdt-test-editor-no-file");
+        dir.create_file("test.md", "# Test");
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        // Set up textarea without opening a file.
+        app.editor.textarea = Some(ratatui_textarea::TextArea::default());
+
+        app.reload_editor_from_disk();
+
+        assert_eq!(app.status_message, "No file path");
     }
 }

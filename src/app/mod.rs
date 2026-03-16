@@ -7,6 +7,7 @@ mod link_picker;
 mod state;
 mod tree;
 mod types;
+mod watcher_handlers;
 
 #[cfg(test)]
 mod tests;

@@ -18,6 +18,7 @@ pub(crate) struct SearchState {
 pub(crate) struct EditorState {
     pub(crate) textarea: Option<TextArea<'static>>,
     pub(crate) is_dirty: bool,
+    pub(crate) external_change_detected: bool,
 }
 
 /// Link picker overlay state.

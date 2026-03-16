@@ -9,9 +9,11 @@ mod palette;
 #[cfg(test)]
 mod test_util;
 mod ui;
+mod watcher;
 
 use std::io;
 use std::path::PathBuf;
+use std::sync::mpsc;
 use std::time::Duration;
 
 use clap::Parser;
@@ -101,8 +103,14 @@ fn main() -> anyhow::Result<()> {
     // can open a file.  Dropping the handle detaches the thread.
     drop(syntax_warmup);
 
+    // Spawn filesystem watcher for auto-reload.
+    let (fs_rx, watcher_handle) = watcher::spawn_watcher(&app.root_path)?;
+
     // Run event loop; capture result so we always tear down.
-    let result = run_loop(&mut terminal, &mut app);
+    let result = run_loop(&mut terminal, &mut app, &fs_rx);
+
+    // Stop the watcher thread.
+    watcher_handle.shutdown();
 
     // --- Terminal teardown (always runs) ---
     disable_raw_mode()?;
@@ -120,6 +128,7 @@ fn main() -> anyhow::Result<()> {
 fn run_loop(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     app: &mut App,
+    fs_rx: &mpsc::Receiver<watcher::FsEvent>,
 ) -> anyhow::Result<()> {
     let mut needs_redraw = true;
 
@@ -146,6 +155,12 @@ fn run_loop(
                 }
                 _ => {}
             }
+        }
+
+        // Drain filesystem watcher events.
+        while let Ok(fs_event) = fs_rx.try_recv() {
+            app.handle_fs_event(fs_event);
+            needs_redraw = true;
         }
 
         // Force redraw when cursor-bearing overlays are active (for blink animation).

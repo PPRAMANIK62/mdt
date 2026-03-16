@@ -71,6 +71,13 @@ impl App {
                     self.status_message = "Not in editor".to_string();
                 }
             }
+            "e" | "edit" => {
+                if in_editor {
+                    self.reload_editor_from_disk();
+                } else {
+                    self.status_message = "Not in editor".to_string();
+                }
+            }
             other => {
                 self.status_message = format!("Unknown command: :{other}");
             }
@@ -113,5 +120,39 @@ mod tests {
 
         assert_eq!(app.mode, AppMode::Normal);
         assert!(app.command_buffer.is_empty());
+    }
+
+    #[test]
+    fn execute_e_reloads_in_editor() {
+        let dir = TempTestDir::new("mdt-test-cmd-e-reload");
+        dir.create_file("test.md", "# V1");
+        let file = dir.path().join("test.md");
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        app.open_file(&file);
+        app.enter_editor();
+
+        // Overwrite on disk.
+        std::fs::write(&file, "# V2").unwrap();
+        app.execute_command("e");
+
+        assert_eq!(app.document.file_content, "# V2");
+        assert!(!app.editor.is_dirty);
+        assert!(!app.editor.external_change_detected);
+        assert_eq!(app.status_message, "reloaded");
+    }
+
+    #[test]
+    fn execute_e_not_in_editor() {
+        let dir = TempTestDir::new("mdt-test-cmd-e-no-editor");
+        dir.create_file("test.md", "# Test");
+        let file = dir.path().join("test.md");
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        app.open_file(&file);
+
+        app.execute_command("e");
+
+        assert_eq!(app.status_message, "Not in editor");
     }
 }
