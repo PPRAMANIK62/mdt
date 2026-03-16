@@ -96,8 +96,10 @@ fn main() -> anyhow::Result<()> {
         original_hook(panic_info);
     }));
 
-    // Ensure syntax highlighting data is fully loaded before accepting user input.
-    let _ = syntax_warmup.join();
+    // Let syntax pre-warming finish in the background; the OnceLock statics
+    // guarantee thread-safe access and the warmup completes well before a user
+    // can open a file.  Dropping the handle detaches the thread.
+    drop(syntax_warmup);
 
     // Run event loop; capture result so we always tear down.
     let result = run_loop(&mut terminal, &mut app);

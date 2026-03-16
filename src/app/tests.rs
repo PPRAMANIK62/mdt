@@ -121,15 +121,22 @@ fn focus_toggle_cycles_between_panels() {
     let dir = TempTestDir::new("mdt-test-focus-toggle");
 
     let mut app = App::new(dir.path(), Color::Reset).unwrap();
+    app.show_file_tree = true;
     assert_eq!(app.focus, Focus::FileList);
 
     // Tab switches to Preview.
     app.handle_event(key_event(KeyCode::Tab));
     assert_eq!(app.focus, Focus::Preview);
 
-    // Tab switches back to FileList.
+    // Tab switches back to FileList when file tree is visible.
     app.handle_event(key_event(KeyCode::Tab));
     assert_eq!(app.focus, Focus::FileList);
+
+    // Tab stays on Preview when file tree is collapsed.
+    app.handle_event(key_event(KeyCode::Tab)); // go to Preview
+    app.show_file_tree = false;
+    app.handle_event(key_event(KeyCode::Tab));
+    assert_eq!(app.focus, Focus::Preview);
 }
 
 #[test]

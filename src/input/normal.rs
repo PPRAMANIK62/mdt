@@ -213,7 +213,8 @@ impl App {
     pub(crate) fn toggle_focus(&mut self) {
         self.focus = match self.focus {
             Focus::FileList => Focus::Preview,
-            Focus::Preview => Focus::FileList,
+            Focus::Preview if self.show_file_tree => Focus::FileList,
+            Focus::Preview => Focus::Preview,
         };
     }
 

@@ -174,5 +174,9 @@ impl App {
         self.document.scroll_offset = 0;
         self.document.rebuild_heading_index();
         self.status_message.clear();
+
+        if !self.show_file_tree {
+            self.focus = Focus::Preview;
+        }
     }
 }
