@@ -28,11 +28,13 @@ pub(crate) const HELP_KEYS: &[(&str, &str)] = &[
     ("d", "Delete"),
     ("r", "Rename"),
     ("m", "Move"),
+    ("Spc+p", "Toggle live preview"),
+    ("Spc+s", "Swap preview split"),
     ("?", "This help"),
 ];
 
 pub(super) fn draw_help_overlay(frame: &mut Frame, area: Rect, bg_color: Color) {
-    let popup_area = modal::centered_rect(50, 27, area);
+    let popup_area = modal::centered_rect(50, 29, area);
     let content_area = modal::render_modal_frame(
         frame,
         popup_area,
