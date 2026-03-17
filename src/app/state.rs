@@ -2,7 +2,11 @@
 
 use std::time::Instant;
 
+use ratatui::text::Line;
 use ratatui_textarea::TextArea;
+
+use crate::app::types::SplitOrientation;
+use crate::markdown::RenderedBlock;
 
 /// Search-related state (both file search and in-document search).
 #[derive(Default)]
@@ -43,4 +47,29 @@ pub(crate) struct FileFinderState {
 pub(crate) struct CursorState {
     pub(crate) visible: bool,
     pub(crate) last_toggle: Instant,
+}
+
+/// Live preview state for split-pane editing.
+pub(crate) struct LivePreviewState {
+    pub(crate) enabled: bool,
+    pub(crate) orientation: SplitOrientation,
+    pub(crate) debounce: Option<Instant>,
+    pub(crate) rendered_lines: Vec<Line<'static>>,
+    pub(crate) rendered_blocks: Vec<RenderedBlock>,
+    pub(crate) scroll_offset: usize,
+    pub(crate) viewport_width: usize,
+}
+
+impl Default for LivePreviewState {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            orientation: SplitOrientation::default(),
+            debounce: None,
+            rendered_lines: Vec::new(),
+            rendered_blocks: Vec::new(),
+            scroll_offset: 0,
+            viewport_width: 0,
+        }
+    }
 }

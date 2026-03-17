@@ -21,10 +21,12 @@ use crate::file_tree;
 use crate::markdown::{deduplicate_links, render_markdown_blocks, rewrap_blocks};
 
 pub use types::{AppMode, Focus};
-pub(crate) use types::{FileOp, Overlay};
+pub(crate) use types::{FileOp, Overlay, SplitOrientation};
 
 pub(crate) use document::{DocumentState, TreeViewState};
-pub(crate) use state::{CursorState, EditorState, FileFinderState, LinkPickerState, SearchState};
+pub(crate) use state::{
+    CursorState, EditorState, FileFinderState, LinkPickerState, LivePreviewState, SearchState,
+};
 
 /// Top-level application state.
 pub struct App {
@@ -49,6 +51,7 @@ pub struct App {
     pub(crate) max_file_size: u64,
     pub(crate) preview_area: Option<ratatui::layout::Rect>,
     pub(crate) file_list_area: Option<ratatui::layout::Rect>,
+    pub(crate) live_preview: LivePreviewState,
 }
 
 impl App {
@@ -109,6 +112,7 @@ impl App {
             max_file_size: Self::DEFAULT_MAX_FILE_SIZE,
             preview_area: None,
             file_list_area: None,
+            live_preview: LivePreviewState::default(),
         })
     }
 

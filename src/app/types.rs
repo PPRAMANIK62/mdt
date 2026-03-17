@@ -51,6 +51,21 @@ pub(crate) enum Overlay {
     FileFinder,
 }
 
+/// Split orientation for live preview alongside editor.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SplitOrientation {
+    /// Editor left, preview right.
+    Horizontal,
+    /// Editor top, preview bottom.
+    Vertical,
+}
+
+impl Default for SplitOrientation {
+    fn default() -> Self {
+        Self::Horizontal
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
