@@ -7,7 +7,7 @@ use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 use unicode_width::UnicodeWidthStr;
 
-use crate::app::{App, AppMode};
+use crate::app::{App, AppMode, SplitOrientation};
 
 /// Draw the status bar at the bottom of the screen.
 pub fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect) {
@@ -35,14 +35,30 @@ pub fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect) {
 
     let dirty_indicator = if app.editor.is_dirty { " [+]" } else { "" };
 
+    let preview_indicator = if app.live_preview.enabled && app.editor.textarea.is_some() {
+        match app.live_preview.orientation {
+            SplitOrientation::Horizontal => "[Preview H]",
+            SplitOrientation::Vertical => "[Preview V]",
+        }
+    } else {
+        ""
+    };
+    let preview_sep = if preview_indicator.is_empty() { "" } else { " " };
+
     let center = if !app.status_message.is_empty() {
         if file_info.is_empty() {
             app.status_message.clone()
         } else {
-            format!("{}{} {}", file_info, dirty_indicator, app.status_message)
+            format!(
+                "{}{}{}{} {}",
+                file_info, dirty_indicator, preview_sep, preview_indicator, app.status_message
+            )
         }
     } else if !file_info.is_empty() {
-        format!("{}{}", file_info, dirty_indicator)
+        format!(
+            "{}{}{}{}",
+            file_info, dirty_indicator, preview_sep, preview_indicator
+        )
     } else {
         String::new()
     };
