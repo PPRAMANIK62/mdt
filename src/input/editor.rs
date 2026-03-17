@@ -103,6 +103,10 @@ impl App {
         self.editor.external_change_detected = false;
         self.mode = AppMode::Insert;
         self.status_message = "-- INSERT --".to_string();
+
+        if self.live_preview.enabled {
+            self.update_live_preview();
+        }
     }
 
     /// Exit the editor, returning to preview mode.
@@ -112,6 +116,13 @@ impl App {
         self.editor.external_change_detected = false;
         self.mode = AppMode::Normal;
         self.document.scroll_offset = 0;
+
+        // Free cached live preview data to avoid holding large allocations
+        // when not editing. The `enabled` flag persists for next edit session.
+        self.live_preview.rendered_lines.clear();
+        self.live_preview.rendered_blocks.clear();
+        self.live_preview.scroll_offset = 0;
+        self.live_preview.debounce = None;
     }
 
     /// Reload the editor content from disk (`:e` command).
