@@ -21,6 +21,9 @@ impl App {
             let modified = textarea.input(key);
             if modified {
                 self.editor.is_dirty = true;
+                if self.live_preview.enabled {
+                    self.live_preview.debounce = Some(std::time::Instant::now());
+                }
             }
         }
     }
@@ -301,6 +304,24 @@ mod tests {
 
         assert!(!app.editor.is_dirty);
         assert!(!app.editor.external_change_detected);
+    }
+
+    #[test]
+    fn insert_keystroke_sets_debounce_when_preview_enabled() {
+        let dir = TempTestDir::new("mdt-test-editor-debounce");
+        dir.create_file("test.md", "# Test");
+        let file = dir.path().join("test.md");
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        app.open_file(&file);
+        app.enter_editor();
+        app.live_preview.enabled = true;
+
+        assert!(app.live_preview.debounce.is_none());
+
+        app.handle_insert_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
+
+        assert!(app.live_preview.debounce.is_some());
     }
 
     #[test]
