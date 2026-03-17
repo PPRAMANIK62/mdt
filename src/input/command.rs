@@ -78,6 +78,9 @@ impl App {
                     self.status_message = "Not in editor".to_string();
                 }
             }
+            "preview" => {
+                self.toggle_live_preview();
+            }
             other => {
                 self.status_message = format!("Unknown command: :{other}");
             }
@@ -295,6 +298,21 @@ mod tests {
         app.execute_command("wq");
 
         assert_eq!(app.status_message, "Not in editor");
+    }
+
+    #[test]
+    fn preview_command_toggles_live_preview() {
+        let dir = TempTestDir::new("mdt-test-cmd-preview");
+        dir.create_file("test.md", "# Test");
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        assert!(!app.live_preview.enabled);
+
+        app.execute_command("preview");
+        assert!(app.live_preview.enabled);
+
+        app.execute_command("preview");
+        assert!(!app.live_preview.enabled);
     }
 
     #[test]
