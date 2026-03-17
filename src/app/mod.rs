@@ -18,7 +18,10 @@ use std::time::{Duration, Instant};
 use tui_tree_widget::TreeState;
 
 use crate::file_tree;
-use crate::markdown::{deduplicate_links, render_markdown_blocks, rewrap_blocks};
+use crate::markdown::{
+    deduplicate_links, render_markdown_blocks, render_markdown_blocks_with_source_map,
+    rewrap_blocks,
+};
 
 pub use types::{AppMode, Focus};
 pub(crate) use types::{FileOp, Overlay, SplitOrientation};
@@ -142,14 +145,23 @@ impl App {
         self.live_preview.enabled = !self.live_preview.enabled;
         if self.live_preview.enabled {
             self.update_live_preview();
+            self.status_message = "Live preview ON".to_string();
+        } else {
+            self.status_message = "Live preview OFF".to_string();
         }
     }
 
     /// Swap split orientation between horizontal and vertical.
     pub(crate) fn toggle_split_orientation(&mut self) {
         self.live_preview.orientation = match self.live_preview.orientation {
-            SplitOrientation::Horizontal => SplitOrientation::Vertical,
-            SplitOrientation::Vertical => SplitOrientation::Horizontal,
+            SplitOrientation::Horizontal => {
+                self.status_message = "Preview split: vertical".to_string();
+                SplitOrientation::Vertical
+            }
+            SplitOrientation::Vertical => {
+                self.status_message = "Preview split: horizontal".to_string();
+                SplitOrientation::Horizontal
+            }
         };
     }
 
@@ -159,7 +171,8 @@ impl App {
             return;
         };
         let content = textarea.lines().join("\n");
-        let (blocks, _links) = render_markdown_blocks(&content);
+        let (blocks, _links, source_lines) =
+            render_markdown_blocks_with_source_map(&content);
         let width = if self.live_preview.viewport_width > 0 {
             Some(self.live_preview.viewport_width)
         } else if self.document.viewport_width > 0 {
@@ -167,9 +180,11 @@ impl App {
         } else {
             None
         };
-        let (rendered, _block_line_starts) = rewrap_blocks(&blocks, width);
+        let (rendered, block_line_starts) = rewrap_blocks(&blocks, width);
         self.live_preview.rendered_lines = rendered;
         self.live_preview.rendered_blocks = blocks;
+        self.live_preview.block_line_starts = block_line_starts;
+        self.live_preview.block_source_lines = source_lines;
         self.live_preview.debounce = None;
     }
 

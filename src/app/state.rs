@@ -59,4 +59,12 @@ pub(crate) struct LivePreviewState {
     pub(crate) rendered_blocks: Vec<RenderedBlock>,
     pub(crate) scroll_offset: usize,
     pub(crate) viewport_width: usize,
+    /// Per-block starting rendered line (from `rewrap_blocks`).
+    pub(crate) block_line_starts: Vec<usize>,
+    /// Per-block starting source line (0-based, from offset tracking).
+    pub(crate) block_source_lines: Vec<usize>,
+    /// Editor inner height (lines visible without scrolling). Set during draw.
+    pub(crate) editor_inner_height: usize,
+    /// Estimated editor viewport scroll top (tracks when editor actually scrolls).
+    pub(crate) estimated_scroll_top: usize,
 }

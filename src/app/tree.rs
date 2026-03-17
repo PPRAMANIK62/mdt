@@ -11,12 +11,21 @@ impl App {
     ///
     /// Updates `path_map` in-place and rebuilds the tree structure without
     /// any filesystem access (the expensive `read_dir` calls are skipped).
+    /// Non-markdown files are silently rejected.
     pub(crate) fn refresh_tree_add(
         &mut self,
         abs_path: &Path,
         is_dir: bool,
         select_id: Option<&str>,
     ) {
+        // Only directories and .md files belong in the tree.
+        if !is_dir {
+            let name = abs_path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if !file_tree::has_md_extension(name) {
+                return;
+            }
+        }
+
         let rel = self.relative_path_str(abs_path);
         self.ensure_parent_dirs_in_map(abs_path);
 
@@ -42,6 +51,19 @@ impl App {
         is_dir: bool,
         select_id: Option<&str>,
     ) {
+        // Only directories and .md files belong in the tree.
+        if !is_dir {
+            let name = new_abs.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if !file_tree::has_md_extension(name) {
+                // If old entry was in the tree, just remove it.
+                let old_rel = self.relative_path_str(old_abs);
+                if self.tree.path_map.remove(&old_rel).is_some() {
+                    self.finish_targeted_refresh(select_id);
+                }
+                return;
+            }
+        }
+
         let old_rel = self.relative_path_str(old_abs);
         let new_rel = self.relative_path_str(new_abs);
 

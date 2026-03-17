@@ -88,3 +88,32 @@ pub(crate) fn render_markdown_blocks(input: &str) -> (Vec<RenderedBlock>, Vec<Li
     renderer.run(parser);
     renderer.into_blocks()
 }
+
+/// Like `render_markdown_blocks` but also returns per-block source line numbers.
+///
+/// The returned `Vec<usize>` has one entry per block: the source line (0-based)
+/// where that block starts. Used by live preview for accurate scroll sync.
+pub(crate) fn render_markdown_blocks_with_source_map(
+    input: &str,
+) -> (Vec<RenderedBlock>, Vec<LinkInfo>, Vec<usize>) {
+    let cleaned = input.replace('\t', "    ");
+
+    let options =
+        Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS | Options::ENABLE_TABLES;
+    let parser = Parser::new_ext(&cleaned, options);
+
+    let mut renderer = Renderer::new();
+    renderer.run_with_offsets(parser.into_offset_iter());
+    let (blocks, links, byte_offsets) = renderer.into_blocks_with_offsets();
+
+    // Convert byte offsets to line numbers.
+    let source_lines: Vec<usize> = byte_offsets
+        .iter()
+        .map(|&offset| {
+            let clamped = offset.min(cleaned.len());
+            cleaned[..clamped].matches('\n').count()
+        })
+        .collect();
+
+    (blocks, links, source_lines)
+}

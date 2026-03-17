@@ -141,9 +141,10 @@ pub fn draw_live_preview(frame: &mut Frame, app: &mut App, area: Rect) {
     let new_width = inner.width as usize;
     if new_width != app.live_preview.viewport_width && !app.live_preview.rendered_blocks.is_empty()
     {
-        let (lines, _block_line_starts) =
+        let (lines, block_line_starts) =
             rewrap_blocks(&app.live_preview.rendered_blocks, Some(new_width));
         app.live_preview.rendered_lines = lines;
+        app.live_preview.block_line_starts = block_line_starts;
         app.live_preview.viewport_width = new_width;
     }
 
@@ -152,17 +153,48 @@ pub fn draw_live_preview(frame: &mut Frame, app: &mut App, area: Rect) {
         return;
     }
 
-    // Scroll sync: map editor cursor line to approximate preview line.
+    // Scroll sync: only scroll preview when the editor viewport actually moves.
+    // We track an estimated scroll_top for the editor. The editor scrolls when
+    // the cursor pushes past the top or bottom edge of the visible area.
     let viewport_height = inner.height as usize;
     if let Some(ref textarea) = app.editor.textarea {
         let cursor_row = textarea.cursor().0;
-        let total_editor_lines = textarea.lines().len().max(1);
-        let total_preview_lines = app.live_preview.rendered_lines.len();
-        // Proportional mapping: cursor position in editor → position in preview
-        let target_line =
-            (cursor_row as f64 / total_editor_lines as f64 * total_preview_lines as f64) as usize;
-        // Center the target line in the viewport
-        app.live_preview.scroll_offset = target_line.saturating_sub(viewport_height / 2);
+        let total_editor_lines = textarea.lines().len();
+        let editor_h = app.live_preview.editor_inner_height;
+        let est = app.live_preview.estimated_scroll_top;
+
+        // Update estimated scroll_top: only changes when cursor goes out of
+        // the current visible window [est .. est + editor_h - 1].
+        let new_est = if editor_h == 0 {
+            0
+        } else if cursor_row >= est + editor_h {
+            // Cursor moved below visible area — editor scrolled down.
+            cursor_row - editor_h + 1
+        } else if cursor_row < est {
+            // Cursor moved above visible area — editor scrolled up.
+            cursor_row
+        } else {
+            // Cursor is within visible area — no scroll change.
+            est
+        };
+
+        if new_est != est {
+            // Editor viewport moved — update preview proportionally.
+            let max_editor_scroll = total_editor_lines.saturating_sub(editor_h);
+            let max_preview_scroll = app
+                .live_preview
+                .rendered_lines
+                .len()
+                .saturating_sub(viewport_height);
+
+            if max_editor_scroll == 0 {
+                app.live_preview.scroll_offset = 0;
+            } else {
+                app.live_preview.scroll_offset =
+                    (new_est * max_preview_scroll) / max_editor_scroll;
+            }
+        }
+        app.live_preview.estimated_scroll_top = new_est;
     }
 
     let max_scroll = app

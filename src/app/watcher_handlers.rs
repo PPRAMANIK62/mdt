@@ -81,7 +81,25 @@ impl App {
 
     fn handle_entry_renamed(&mut self, from: &Path, to: &Path) {
         let is_dir = to.is_dir();
-        self.refresh_tree_move(from, to, is_dir, None);
+
+        if is_dir {
+            self.refresh_tree_move(from, to, true, None);
+        } else {
+            // Non-directories must be markdown files to appear in the tree.
+            let to_name = to.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            let from_name = from.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            let to_is_md = file_tree::has_md_extension(to_name);
+            let from_is_md = file_tree::has_md_extension(from_name);
+
+            if from_is_md && to_is_md {
+                self.refresh_tree_move(from, to, false, None);
+            } else if from_is_md {
+                self.refresh_tree_remove(from, None);
+            } else if to_is_md {
+                self.refresh_tree_add(to, false, None);
+            }
+            // Neither is .md — ignore entirely.
+        }
 
         if self.document.current_file.as_deref() == Some(from) {
             self.document.current_file = Some(to.to_path_buf());

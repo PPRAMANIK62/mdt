@@ -1,4 +1,4 @@
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::style::Style;
 use ratatui::widgets::{Block, Borders};
 use ratatui_textarea::TextArea;
@@ -30,7 +30,7 @@ impl App {
 
     /// Handle Normal-mode keys while in editor view (textarea is Some).
     pub(crate) fn handle_editor_normal_key(&mut self, key: KeyEvent) {
-        // Check for composed commands (Space+p, Space+s).
+        // Check for composed commands.
         if let Some((pending_char, instant)) = self.pending_key.take() {
             if instant.elapsed().as_millis() < 500 {
                 match (pending_char, key.code) {
@@ -40,6 +40,17 @@ impl App {
                     }
                     (' ', KeyCode::Char('s')) => {
                         self.toggle_split_orientation();
+                        return;
+                    }
+                    (' ', KeyCode::Char('e')) => {
+                        self.toggle_file_tree();
+                        return;
+                    }
+                    ('g', KeyCode::Char('g')) => {
+                        // gg: jump to top of editor.
+                        if let Some(ref mut textarea) = self.editor.textarea {
+                            textarea.input(KeyEvent::new(KeyCode::Home, KeyModifiers::NONE));
+                        }
                         return;
                     }
                     _ => {} // fall through
@@ -61,21 +72,63 @@ impl App {
             // Exit editor (with dirty-check warning).
             KeyCode::Esc => {
                 if self.editor.is_dirty {
-                    self.status_message = "Unsaved changes! :w to save, :q! to discard".to_string();
+                    self.status_message =
+                        "Unsaved changes! :w to save, :q! to discard".to_string();
                 } else {
                     self.exit_editor();
                 }
             }
-            // Leader key for composed commands.
+            // Leader keys for composed commands.
             KeyCode::Char(' ') => {
                 self.pending_key = Some((' ', std::time::Instant::now()));
             }
-            // Forward navigation keys to TextArea (h/j/k/l, arrows, etc.).
-            _ => {
+            KeyCode::Char('g') => {
+                self.pending_key = Some(('g', std::time::Instant::now()));
+            }
+            // G: jump to bottom of editor.
+            KeyCode::Char('G') => {
+                if let Some(ref mut textarea) = self.editor.textarea {
+                    textarea.input(KeyEvent::new(KeyCode::End, KeyModifiers::NONE));
+                }
+            }
+            // Vim-style cursor movement — translate to arrow keys so the
+            // textarea moves the cursor instead of inserting characters.
+            KeyCode::Char('h') => {
+                if let Some(ref mut textarea) = self.editor.textarea {
+                    textarea.input(KeyEvent::new(KeyCode::Left, key.modifiers));
+                }
+            }
+            KeyCode::Char('j') => {
+                if let Some(ref mut textarea) = self.editor.textarea {
+                    textarea.input(KeyEvent::new(KeyCode::Down, key.modifiers));
+                }
+            }
+            KeyCode::Char('k') => {
+                if let Some(ref mut textarea) = self.editor.textarea {
+                    textarea.input(KeyEvent::new(KeyCode::Up, key.modifiers));
+                }
+            }
+            KeyCode::Char('l') => {
+                if let Some(ref mut textarea) = self.editor.textarea {
+                    textarea.input(KeyEvent::new(KeyCode::Right, key.modifiers));
+                }
+            }
+            // Forward only non-character keys (arrows, Home, End, PageUp/Down)
+            // to prevent accidental text insertion in Normal mode.
+            KeyCode::Left
+            | KeyCode::Right
+            | KeyCode::Up
+            | KeyCode::Down
+            | KeyCode::Home
+            | KeyCode::End
+            | KeyCode::PageUp
+            | KeyCode::PageDown => {
                 if let Some(ref mut textarea) = self.editor.textarea {
                     textarea.input(key);
                 }
             }
+            // All other keys are ignored in Normal mode.
+            _ => {}
         }
     }
 
@@ -121,6 +174,8 @@ impl App {
         // when not editing. The `enabled` flag persists for next edit session.
         self.live_preview.rendered_lines.clear();
         self.live_preview.rendered_blocks.clear();
+        self.live_preview.block_line_starts.clear();
+        self.live_preview.block_source_lines.clear();
         self.live_preview.scroll_offset = 0;
         self.live_preview.debounce = None;
     }

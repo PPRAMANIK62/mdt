@@ -300,3 +300,59 @@ fn update_live_preview_renders_editor_content() {
 
     assert!(!app.live_preview.rendered_lines.is_empty());
 }
+
+/// End-to-end test: full user flow through handle_event() for Space+p in editor.
+#[test]
+fn e2e_space_p_toggles_preview_in_editor_via_handle_event() {
+    let dir = TempTestDir::new("mdt-test-e2e-space-p");
+    dir.create_file("test.md", "# Hello\nWorld");
+    let file = dir.path().join("test.md");
+
+    let mut app = App::new(dir.path(), Color::Reset).unwrap();
+    app.open_file(&file);
+    app.focus = Focus::Preview;
+
+    // Step 1: Press 'i' to enter editor (sets Insert mode).
+    app.handle_event(key_event(KeyCode::Char('i')));
+    assert_eq!(app.mode, AppMode::Insert);
+    assert!(app.editor.textarea.is_some());
+
+    // Step 2: Press Esc to go to Normal mode (still in editor).
+    app.handle_event(key_event(KeyCode::Esc));
+    assert_eq!(app.mode, AppMode::Normal);
+    assert!(app.editor.textarea.is_some()); // still in editor
+
+    // Step 3: Press Space then 'p' to toggle live preview.
+    assert!(!app.live_preview.enabled);
+    app.handle_event(key_event(KeyCode::Char(' ')));
+    app.handle_event(key_event(KeyCode::Char('p')));
+    assert!(app.live_preview.enabled);
+    assert_eq!(app.status_message, "Live preview ON");
+
+    // Step 4: Toggle off.
+    app.handle_event(key_event(KeyCode::Char(' ')));
+    app.handle_event(key_event(KeyCode::Char('p')));
+    assert!(!app.live_preview.enabled);
+    assert_eq!(app.status_message, "Live preview OFF");
+}
+
+/// Verify Space+p in Insert mode does NOT toggle preview (types into editor instead).
+#[test]
+fn space_p_in_insert_mode_does_not_toggle_preview() {
+    let dir = TempTestDir::new("mdt-test-insert-space-p");
+    dir.create_file("test.md", "# Test");
+    let file = dir.path().join("test.md");
+
+    let mut app = App::new(dir.path(), Color::Reset).unwrap();
+    app.open_file(&file);
+    app.focus = Focus::Preview;
+
+    // Enter editor (Insert mode).
+    app.handle_event(key_event(KeyCode::Char('i')));
+    assert_eq!(app.mode, AppMode::Insert);
+
+    // Space+p in Insert mode should NOT toggle preview.
+    app.handle_event(key_event(KeyCode::Char(' ')));
+    app.handle_event(key_event(KeyCode::Char('p')));
+    assert!(!app.live_preview.enabled);
+}

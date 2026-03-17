@@ -78,6 +78,10 @@ pub(super) struct Renderer {
     /// Whether we're inside a heading (to apply heading style to all text).
     /// Width of the current list marker (indent + bullet/number) for hanging indent.
     pub(super) list_marker_width: usize,
+    /// Source byte offset for each block (populated by `run_with_offsets`).
+    pub(super) block_source_offsets: Vec<usize>,
+    /// Byte offset of the most recently seen event (for final flush).
+    pub(super) last_event_offset: usize,
     pub(super) in_heading: bool,
     pub(super) heading_level: Option<u8>,
     /// Whether we're inside a table.
@@ -116,6 +120,8 @@ impl Renderer {
             table_cell_spans: Vec::new(),
             in_table_header: false,
             list_marker_width: 0,
+            block_source_offsets: Vec::new(),
+            last_event_offset: 0,
         }
     }
 
@@ -126,8 +132,33 @@ impl Renderer {
         self.flush_line();
     }
 
+    /// Run with byte offset tracking — records source offset for each block.
+    pub(super) fn run_with_offsets<'a>(
+        &mut self,
+        parser: impl Iterator<Item = (Event<'a>, std::ops::Range<usize>)>,
+    ) {
+        for (event, range) in parser {
+            self.last_event_offset = range.start;
+            self.handle_event(event);
+            // Tag any newly-pushed blocks with this event's source offset.
+            while self.block_source_offsets.len() < self.blocks.len() {
+                self.block_source_offsets.push(range.start);
+            }
+        }
+        self.flush_line();
+        while self.block_source_offsets.len() < self.blocks.len() {
+            self.block_source_offsets.push(self.last_event_offset);
+        }
+    }
+
     pub(super) fn into_blocks(self) -> (Vec<RenderedBlock>, Vec<LinkInfo>) {
         (self.blocks, self.link_infos)
+    }
+
+    pub(super) fn into_blocks_with_offsets(
+        self,
+    ) -> (Vec<RenderedBlock>, Vec<LinkInfo>, Vec<usize>) {
+        (self.blocks, self.link_infos, self.block_source_offsets)
     }
 
     // ── Event dispatch ──────────────────────────────────────────────────
