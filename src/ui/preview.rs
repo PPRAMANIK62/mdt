@@ -7,7 +7,7 @@ use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{
-    Block, Padding, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState,
+    Block, Borders, Padding, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState,
 };
 use ratatui::Frame;
 
@@ -124,6 +124,96 @@ pub fn draw_preview(frame: &mut Frame, app: &mut App, area: Rect) {
     }
 }
 
+/// Draw the live preview pane alongside the editor.
+///
+/// Similar to `draw_preview()` but renders from `app.live_preview.rendered_lines`
+/// (editor buffer content) instead of `app.document.rendered_lines` (on-disk content).
+/// Scroll position tracks the editor cursor.
+pub fn draw_live_preview(frame: &mut Frame, app: &mut App, area: Rect) {
+    let block = Block::default()
+        .title(" Preview ")
+        .borders(Borders::ALL)
+        .padding(Padding::new(1, 1, 0, 0));
+
+    let inner = block.inner(area);
+
+    // Re-wrap if viewport width changed.
+    let new_width = inner.width as usize;
+    if new_width != app.live_preview.viewport_width && !app.live_preview.rendered_blocks.is_empty()
+    {
+        let (lines, _block_line_starts) =
+            rewrap_blocks(&app.live_preview.rendered_blocks, Some(new_width));
+        app.live_preview.rendered_lines = lines;
+        app.live_preview.viewport_width = new_width;
+    }
+
+    if app.live_preview.rendered_lines.is_empty() {
+        frame.render_widget(block, area);
+        return;
+    }
+
+    // Scroll sync: map editor cursor line to approximate preview line.
+    let viewport_height = inner.height as usize;
+    if let Some(ref textarea) = app.editor.textarea {
+        let cursor_row = textarea.cursor().0;
+        let total_editor_lines = textarea.lines().len().max(1);
+        let total_preview_lines = app.live_preview.rendered_lines.len();
+        // Proportional mapping: cursor position in editor → position in preview
+        let target_line =
+            (cursor_row as f64 / total_editor_lines as f64 * total_preview_lines as f64) as usize;
+        // Center the target line in the viewport
+        app.live_preview.scroll_offset = target_line.saturating_sub(viewport_height / 2);
+    }
+
+    let max_scroll = app
+        .live_preview
+        .rendered_lines
+        .len()
+        .saturating_sub(viewport_height);
+    if app.live_preview.scroll_offset > max_scroll {
+        app.live_preview.scroll_offset = max_scroll;
+    }
+
+    let end = (app.live_preview.scroll_offset + viewport_height)
+        .min(app.live_preview.rendered_lines.len());
+    let visible_slice = &app.live_preview.rendered_lines[app.live_preview.scroll_offset..end];
+
+    let lines: Vec<Line<'_>> = visible_slice
+        .iter()
+        .map(|line| {
+            let spans: Vec<Span<'_>> = line
+                .spans
+                .iter()
+                .map(|s| Span::styled(s.content.as_ref(), s.style))
+                .collect();
+            Line {
+                spans,
+                style: line.style,
+                alignment: line.alignment,
+            }
+        })
+        .collect();
+    let text = Text::from(lines);
+
+    let paragraph = Paragraph::new(text).block(block).scroll((0, 0));
+    frame.render_widget(paragraph, area);
+
+    // Scrollbar
+    let total_lines = app.live_preview.rendered_lines.len();
+    if total_lines > viewport_height {
+        let mut scrollbar_state =
+            ScrollbarState::new(max_scroll).position(app.live_preview.scroll_offset);
+        let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+            .begin_symbol(None)
+            .end_symbol(None)
+            .thumb_symbol("┃")
+            .thumb_style(Style::default().fg(Color::DarkGray))
+            .track_symbol(Some(" "))
+            .track_style(Style::default());
+        frame.render_stateful_widget(scrollbar, area, &mut scrollbar_state);
+    }
+}
+
 /// Highlight all occurrences of `query` (lowercase) in a line by splitting spans.
 fn highlight_line<'a>(line: Line<'a>, query: &str, highlight_style: Style) -> Line<'a> {
     let mut new_spans: Vec<Span<'a>> = Vec::with_capacity(line.spans.len());
@@ -211,6 +301,58 @@ mod tests {
         let result = highlight_line(line, "foo", style);
         let foo_count = result.spans.iter().filter(|s| s.content == "foo").count();
         assert_eq!(foo_count, 3);
+    }
+
+    #[test]
+    fn draw_live_preview_renders_content() {
+        let dir = TempTestDir::new("mdt-test-live-preview-draw");
+        dir.create_file("test.md", "# Hello World");
+        let file = dir.path().join("test.md");
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        app.open_file(&file);
+        app.enter_editor();
+        app.live_preview.enabled = true;
+        app.update_live_preview();
+
+        let backend = TestBackend::new(60, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| {
+                let area = f.area();
+                draw_live_preview(f, &mut app, area);
+            })
+            .unwrap();
+
+        let buf = terminal.backend().buffer();
+        let text: String = (0..buf.area.height)
+            .flat_map(|y| (0..buf.area.width).map(move |x| (x, y)))
+            .filter_map(|(x, y)| buf.cell(Position::new(x, y)))
+            .map(ratatui::buffer::Cell::symbol)
+            .collect();
+        assert!(text.contains("Hello World"));
+    }
+
+    #[test]
+    fn draw_live_preview_empty_renders_blank() {
+        let dir = TempTestDir::new("mdt-test-live-preview-empty");
+        dir.create_file("test.md", "");
+        let file = dir.path().join("test.md");
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        app.open_file(&file);
+        app.enter_editor();
+        app.live_preview.enabled = true;
+
+        let backend = TestBackend::new(60, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| {
+                let area = f.area();
+                draw_live_preview(f, &mut app, area);
+            })
+            .unwrap();
+        // Should not panic
     }
 
     #[test]
