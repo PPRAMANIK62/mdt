@@ -50,3 +50,41 @@ pub(crate) enum Overlay {
     FileOp(FileOp),
     FileFinder,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn app_mode_display_normal() {
+        assert_eq!(format!("{}", AppMode::Normal), "NORMAL");
+    }
+
+    #[test]
+    fn app_mode_display_insert() {
+        assert_eq!(format!("{}", AppMode::Insert), "INSERT");
+    }
+
+    #[test]
+    fn app_mode_display_command() {
+        assert_eq!(format!("{}", AppMode::Command), "COMMAND");
+    }
+
+    #[test]
+    fn app_mode_display_search() {
+        assert_eq!(format!("{}", AppMode::Search), "SEARCH");
+    }
+
+    #[test]
+    fn app_mode_equality() {
+        assert_eq!(AppMode::Normal, AppMode::Normal);
+        assert_ne!(AppMode::Normal, AppMode::Insert);
+    }
+
+    #[test]
+    fn focus_equality() {
+        assert_eq!(Focus::FileList, Focus::FileList);
+        assert_eq!(Focus::Preview, Focus::Preview);
+        assert_ne!(Focus::FileList, Focus::Preview);
+    }
+}

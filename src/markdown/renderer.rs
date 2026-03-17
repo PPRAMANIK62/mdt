@@ -583,3 +583,241 @@ impl Renderer {
         self.blocks.push(RenderedBlock::BlankLine { blockquote_depth: self.blockquote_depth });
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── humanize_url ───────────────────────────────────────────────
+
+    #[test]
+    fn humanize_url_strips_https() {
+        assert_eq!(humanize_url("https://example.com"), "example.com");
+    }
+
+    #[test]
+    fn humanize_url_strips_http() {
+        assert_eq!(humanize_url("http://example.com"), "example.com");
+    }
+
+    #[test]
+    fn humanize_url_strips_www() {
+        assert_eq!(humanize_url("https://www.example.com"), "example.com");
+    }
+
+    #[test]
+    fn humanize_url_strips_trailing_slash() {
+        assert_eq!(humanize_url("https://example.com/"), "example.com");
+    }
+
+    #[test]
+    fn humanize_url_preserves_path() {
+        assert_eq!(humanize_url("https://example.com/path/page"), "example.com/path/page");
+    }
+
+    #[test]
+    fn humanize_url_no_scheme() {
+        assert_eq!(humanize_url("example.com"), "example.com");
+    }
+
+    #[test]
+    fn humanize_url_all_strippable() {
+        assert_eq!(humanize_url("https://www.example.com/"), "example.com");
+    }
+
+    // ── deduplicate_links ──────────────────────────────────────────
+
+    #[test]
+    fn deduplicate_links_removes_duplicate_urls() {
+        let links = vec![
+            LinkInfo {
+                display_text: "https://example.com".to_string(),
+                url: "https://example.com".to_string(),
+            },
+            LinkInfo {
+                display_text: "https://example.com".to_string(),
+                url: "https://example.com".to_string(),
+            },
+        ];
+        let result = deduplicate_links(links);
+        assert_eq!(result.len(), 1);
+    }
+
+    #[test]
+    fn deduplicate_links_prefers_descriptive_text() {
+        let links = vec![
+            LinkInfo {
+                display_text: "https://example.com".to_string(),
+                url: "https://example.com".to_string(),
+            },
+            LinkInfo {
+                display_text: "Example Site".to_string(),
+                url: "https://example.com".to_string(),
+            },
+        ];
+        let result = deduplicate_links(links);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].display_text, "Example Site");
+    }
+
+    #[test]
+    fn deduplicate_links_humanizes_url_only_display() {
+        let links = vec![LinkInfo {
+            display_text: "https://www.example.com/".to_string(),
+            url: "https://www.example.com/".to_string(),
+        }];
+        let result = deduplicate_links(links);
+        assert_eq!(result[0].display_text, "example.com");
+    }
+
+    #[test]
+    fn deduplicate_links_keeps_different_urls() {
+        let links = vec![
+            LinkInfo { display_text: "A".to_string(), url: "https://a.com".to_string() },
+            LinkInfo { display_text: "B".to_string(), url: "https://b.com".to_string() },
+        ];
+        let result = deduplicate_links(links);
+        assert_eq!(result.len(), 2);
+    }
+
+    #[test]
+    fn deduplicate_links_empty_input() {
+        let result = deduplicate_links(Vec::new());
+        assert!(result.is_empty());
+    }
+
+    // ── Renderer integration ──────────────────────────────────────
+
+    #[test]
+    fn renderer_heading_produces_styled_line() {
+        let md = "# Hello";
+        let parser = pulldown_cmark::Parser::new(md);
+        let mut r = Renderer::new();
+        r.run(parser);
+        let (blocks, _) = r.into_blocks();
+
+        assert!(!blocks.is_empty());
+        match &blocks[0] {
+            RenderedBlock::StyledLine { heading_level, .. } => {
+                assert_eq!(*heading_level, Some(1));
+            }
+            _ => panic!("Expected StyledLine for heading"),
+        }
+    }
+
+    #[test]
+    fn renderer_collects_links() {
+        let md = "[Rust](https://rust-lang.org)";
+        let parser = pulldown_cmark::Parser::new(md);
+        let mut r = Renderer::new();
+        r.run(parser);
+        let (_, links) = r.into_blocks();
+
+        assert_eq!(links.len(), 1);
+        assert_eq!(links[0].display_text, "Rust");
+        assert_eq!(links[0].url, "https://rust-lang.org");
+    }
+
+    #[test]
+    fn renderer_code_block() {
+        let md = "```rust\nlet x = 1;\n```";
+        let parser = pulldown_cmark::Parser::new(md);
+        let mut r = Renderer::new();
+        r.run(parser);
+        let (blocks, _) = r.into_blocks();
+
+        let has_code = blocks
+            .iter()
+            .any(|b| matches!(b, RenderedBlock::CodeBlock { lang, .. } if lang == "rust"));
+        assert!(has_code);
+    }
+
+    #[test]
+    fn renderer_horizontal_rule() {
+        let md = "---";
+        let parser = pulldown_cmark::Parser::new(md);
+        let mut r = Renderer::new();
+        r.run(parser);
+        let (blocks, _) = r.into_blocks();
+
+        let has_hr = blocks.iter().any(|b| matches!(b, RenderedBlock::HorizontalRule { .. }));
+        assert!(has_hr);
+    }
+
+    #[test]
+    fn renderer_blockquote_depth() {
+        let md = "> quoted text";
+        let parser = pulldown_cmark::Parser::new(md);
+        let mut r = Renderer::new();
+        r.run(parser);
+        let (blocks, _) = r.into_blocks();
+
+        let has_quote = blocks.iter().any(|b| match b {
+            RenderedBlock::StyledLine { blockquote_depth, .. } => *blockquote_depth > 0,
+            _ => false,
+        });
+        assert!(has_quote);
+    }
+
+    #[test]
+    fn renderer_unordered_list() {
+        let md = "- item one\n- item two";
+        let parser = pulldown_cmark::Parser::new(md);
+        let mut r = Renderer::new();
+        r.run(parser);
+        let (blocks, _) = r.into_blocks();
+
+        // Should produce at least 2 styled lines for list items
+        let styled_count =
+            blocks.iter().filter(|b| matches!(b, RenderedBlock::StyledLine { .. })).count();
+        assert!(styled_count >= 2);
+    }
+
+    #[test]
+    fn renderer_ordered_list() {
+        let md = "1. first\n2. second";
+        let parser = pulldown_cmark::Parser::new(md);
+        let mut r = Renderer::new();
+        r.run(parser);
+        let (blocks, _) = r.into_blocks();
+
+        let styled_count =
+            blocks.iter().filter(|b| matches!(b, RenderedBlock::StyledLine { .. })).count();
+        assert!(styled_count >= 2);
+    }
+
+    #[test]
+    fn renderer_table() {
+        let md = "| A | B |\n|---|---|\n| 1 | 2 |";
+        let opts = pulldown_cmark::Options::ENABLE_TABLES;
+        let parser = pulldown_cmark::Parser::new_ext(md, opts);
+        let mut r = Renderer::new();
+        r.run(parser);
+        let (blocks, _) = r.into_blocks();
+
+        let has_table = blocks.iter().any(|b| matches!(b, RenderedBlock::Table { .. }));
+        assert!(has_table);
+    }
+
+    #[test]
+    fn renderer_task_list() {
+        let md = "- [x] done\n- [ ] todo";
+        let opts = pulldown_cmark::Options::ENABLE_TASKLISTS;
+        let parser = pulldown_cmark::Parser::new_ext(md, opts);
+        let mut r = Renderer::new();
+        r.run(parser);
+        let (blocks, _) = r.into_blocks();
+
+        // Task list items produce styled lines with checkbox chars
+        let text: String = blocks
+            .iter()
+            .filter_map(|b| match b {
+                RenderedBlock::StyledLine { spans, .. } => {
+                    Some(spans.iter().map(|s| s.content.to_string()).collect::<String>())
+                }
+                _ => None,
+            })
+            .collect();
+        assert!(text.contains('☑') || text.contains('☐'));
+    }
+}

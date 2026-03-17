@@ -232,7 +232,7 @@ impl App {
 mod tests {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-    use crate::app::{App, AppMode, Focus};
+    use crate::app::{App, AppMode, Focus, Overlay};
     use crate::test_util::TempTestDir;
     use ratatui::style::Color;
 
@@ -267,5 +267,280 @@ mod tests {
 
         assert_eq!(app.mode, AppMode::Command);
         assert!(app.command_buffer.is_empty());
+    }
+
+    #[test]
+    fn slash_enters_search_mode() {
+        let dir = TempTestDir::new("mdt-test-normal-slash");
+        dir.create_file("test.md", "# Test");
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        app.handle_normal_key(KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE));
+
+        assert_eq!(app.mode, AppMode::Search);
+        assert!(app.search.active);
+        assert!(app.search.query.is_empty());
+    }
+
+    #[test]
+    fn q_key_quits() {
+        let dir = TempTestDir::new("mdt-test-normal-q");
+        dir.create_file("test.md", "# Test");
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        app.handle_normal_key(KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE));
+
+        assert!(app.should_quit);
+    }
+
+    #[test]
+    fn question_mark_toggles_help() {
+        let dir = TempTestDir::new("mdt-test-normal-help");
+        dir.create_file("test.md", "# Test");
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        assert!(matches!(app.overlay, Overlay::None));
+
+        app.handle_normal_key(KeyEvent::new(KeyCode::Char('?'), KeyModifiers::NONE));
+        assert!(matches!(app.overlay, Overlay::Help));
+
+        app.handle_normal_key(KeyEvent::new(KeyCode::Char('?'), KeyModifiers::NONE));
+        assert!(matches!(app.overlay, Overlay::None));
+    }
+
+    #[test]
+    fn tab_toggles_focus() {
+        let dir = TempTestDir::new("mdt-test-normal-tab");
+        dir.create_file("test.md", "# Test");
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        app.show_file_tree = true;
+        assert_eq!(app.focus, Focus::FileList);
+
+        app.handle_normal_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+        assert_eq!(app.focus, Focus::Preview);
+    }
+
+    #[test]
+    fn j_key_in_preview_scrolls_down() {
+        let dir = TempTestDir::new("mdt-test-normal-j-preview");
+        let content = (0..30).map(|i| format!("line {i}")).collect::<Vec<_>>().join("\n\n");
+        dir.create_file("test.md", &content);
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        app.open_file(&dir.path().join("test.md"));
+        app.document.viewport_height = 10;
+        app.focus = Focus::Preview;
+
+        app.handle_normal_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE));
+        assert_eq!(app.document.scroll_offset, 1);
+    }
+
+    #[test]
+    fn k_key_in_preview_scrolls_up() {
+        let dir = TempTestDir::new("mdt-test-normal-k-preview");
+        let content = (0..30).map(|i| format!("line {i}")).collect::<Vec<_>>().join("\n\n");
+        dir.create_file("test.md", &content);
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        app.open_file(&dir.path().join("test.md"));
+        app.document.viewport_height = 10;
+        app.document.scroll_offset = 5;
+        app.focus = Focus::Preview;
+
+        app.handle_normal_key(KeyEvent::new(KeyCode::Char('k'), KeyModifiers::NONE));
+        assert_eq!(app.document.scroll_offset, 4);
+    }
+
+    #[test]
+    fn g_key_sets_pending() {
+        let dir = TempTestDir::new("mdt-test-normal-g-pending");
+        dir.create_file("test.md", "# Test");
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        app.handle_normal_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE));
+
+        assert!(app.pending_key.is_some());
+        assert_eq!(app.pending_key.unwrap().0, 'g');
+    }
+
+    #[test]
+    fn gg_scrolls_to_top() {
+        let dir = TempTestDir::new("mdt-test-normal-gg");
+        let content = (0..30).map(|i| format!("line {i}")).collect::<Vec<_>>().join("\n\n");
+        dir.create_file("test.md", &content);
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        app.open_file(&dir.path().join("test.md"));
+        app.document.viewport_height = 10;
+        app.document.scroll_offset = 15;
+        app.focus = Focus::Preview;
+
+        app.handle_normal_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE));
+        app.handle_normal_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE));
+
+        assert_eq!(app.document.scroll_offset, 0);
+    }
+
+    #[test]
+    fn big_g_scrolls_to_bottom() {
+        let dir = TempTestDir::new("mdt-test-normal-big-g");
+        let content = (0..50).map(|i| format!("line {i}")).collect::<Vec<_>>().join("\n\n");
+        dir.create_file("test.md", &content);
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        app.open_file(&dir.path().join("test.md"));
+        app.document.viewport_height = 10;
+        app.focus = Focus::Preview;
+
+        app.handle_normal_key(KeyEvent::new(KeyCode::Char('G'), KeyModifiers::NONE));
+
+        assert_eq!(app.document.scroll_offset, app.document.max_scroll());
+    }
+
+    #[test]
+    fn ctrl_d_half_page_down() {
+        let dir = TempTestDir::new("mdt-test-normal-ctrlD");
+        let content = (0..50).map(|i| format!("line {i}")).collect::<Vec<_>>().join("\n\n");
+        dir.create_file("test.md", &content);
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        app.open_file(&dir.path().join("test.md"));
+        app.document.viewport_height = 20;
+        app.focus = Focus::Preview;
+
+        app.handle_normal_key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::CONTROL));
+
+        assert_eq!(app.document.scroll_offset, 10);
+    }
+
+    #[test]
+    fn ctrl_u_half_page_up() {
+        let dir = TempTestDir::new("mdt-test-normal-ctrlU");
+        let content = (0..50).map(|i| format!("line {i}")).collect::<Vec<_>>().join("\n\n");
+        dir.create_file("test.md", &content);
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        app.open_file(&dir.path().join("test.md"));
+        app.document.viewport_height = 20;
+        app.document.scroll_offset = 15;
+        app.focus = Focus::Preview;
+
+        app.handle_normal_key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL));
+
+        assert_eq!(app.document.scroll_offset, 5);
+    }
+
+    #[test]
+    fn toggle_file_tree_changes_visibility() {
+        let dir = TempTestDir::new("mdt-test-normal-toggle-tree");
+        dir.create_file("test.md", "# Test");
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        assert!(!app.show_file_tree);
+
+        app.toggle_file_tree();
+        assert!(app.show_file_tree);
+        assert_eq!(app.focus, Focus::FileList);
+
+        app.toggle_file_tree();
+        assert!(!app.show_file_tree);
+        assert_eq!(app.focus, Focus::Preview);
+    }
+
+    #[test]
+    fn toggle_focus_stays_preview_when_tree_hidden() {
+        let dir = TempTestDir::new("mdt-test-normal-toggle-focus-no-tree");
+        dir.create_file("test.md", "# Test");
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        app.show_file_tree = false;
+        app.focus = Focus::Preview;
+
+        app.toggle_focus();
+        assert_eq!(app.focus, Focus::Preview);
+    }
+
+    #[test]
+    fn a_key_in_file_list_starts_create_file() {
+        let dir = TempTestDir::new("mdt-test-normal-a-create");
+        dir.create_file("test.md", "# Test");
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        app.focus = Focus::FileList;
+
+        app.handle_normal_key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE));
+
+        assert!(matches!(app.overlay, Overlay::FileOp(crate::app::FileOp::CreateFile { .. })));
+    }
+
+    #[test]
+    fn a_key_in_preview_does_nothing() {
+        let dir = TempTestDir::new("mdt-test-normal-a-preview");
+        dir.create_file("test.md", "# Test");
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        app.focus = Focus::Preview;
+
+        app.handle_normal_key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE));
+
+        assert!(matches!(app.overlay, Overlay::None));
+    }
+
+    #[test]
+    fn o_key_opens_link_picker_with_links() {
+        let dir = TempTestDir::new("mdt-test-normal-o-links");
+        dir.create_file("test.md", "[link](https://example.com)");
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        app.open_file(&dir.path().join("test.md"));
+        app.focus = Focus::Preview;
+
+        app.handle_normal_key(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::NONE));
+
+        assert!(matches!(app.overlay, Overlay::LinkPicker));
+    }
+
+    #[test]
+    fn o_key_no_links_shows_message() {
+        let dir = TempTestDir::new("mdt-test-normal-o-nolinks");
+        dir.create_file("test.md", "# No links here");
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        app.open_file(&dir.path().join("test.md"));
+        app.focus = Focus::Preview;
+
+        app.handle_normal_key(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::NONE));
+
+        assert!(matches!(app.overlay, Overlay::None));
+        assert!(app.status_message.contains("No links"));
+    }
+
+    #[test]
+    fn esc_clears_search() {
+        let dir = TempTestDir::new("mdt-test-normal-esc");
+        dir.create_file("test.md", "# Test");
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        app.search.active = true;
+        app.search.query = "test".to_string();
+
+        app.handle_normal_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+
+        assert!(!app.search.active);
+        assert!(app.search.query.is_empty());
+    }
+
+    #[test]
+    fn ff_opens_file_finder() {
+        let dir = TempTestDir::new("mdt-test-normal-ff");
+        dir.create_file("test.md", "# Test");
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+
+        app.handle_normal_key(KeyEvent::new(KeyCode::Char('f'), KeyModifiers::NONE));
+        app.handle_normal_key(KeyEvent::new(KeyCode::Char('f'), KeyModifiers::NONE));
+
+        assert!(matches!(app.overlay, Overlay::FileFinder));
     }
 }

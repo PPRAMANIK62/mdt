@@ -178,3 +178,247 @@ impl App {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use ratatui::style::Color;
+
+    use crate::app::{App, FileOp, Overlay};
+    use crate::test_util::TempTestDir;
+
+    fn key(code: KeyCode) -> KeyEvent {
+        KeyEvent::new(code, KeyModifiers::NONE)
+    }
+
+    #[test]
+    fn cancel_file_op_clears_overlay_and_input() {
+        let dir = TempTestDir::new("mdt-test-fop-cancel");
+        dir.create_file("a.md", "# A");
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+
+        app.overlay = Overlay::FileOp(FileOp::CreateFile { parent_dir: dir.path().to_path_buf() });
+        app.file_op_input = "test".to_string();
+
+        app.cancel_file_op();
+
+        assert!(matches!(app.overlay, Overlay::None));
+        assert!(app.file_op_input.is_empty());
+    }
+
+    #[test]
+    fn start_create_file_sets_overlay() {
+        let dir = TempTestDir::new("mdt-test-fop-create-file");
+        dir.create_file("a.md", "# A");
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+
+        // Select the first file
+        app.tree.tree_state.select(vec!["a.md".to_string()]);
+        app.start_create_file();
+
+        assert!(matches!(app.overlay, Overlay::FileOp(FileOp::CreateFile { .. })));
+        assert!(app.file_op_input.is_empty());
+    }
+
+    #[test]
+    fn start_create_dir_sets_overlay() {
+        let dir = TempTestDir::new("mdt-test-fop-create-dir");
+        dir.create_file("a.md", "# A");
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+
+        app.start_create_dir();
+
+        assert!(matches!(app.overlay, Overlay::FileOp(FileOp::CreateDir { .. })));
+    }
+
+    #[test]
+    fn start_delete_with_selection() {
+        let dir = TempTestDir::new("mdt-test-fop-delete");
+        dir.create_file("a.md", "# A");
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+
+        app.tree.tree_state.select(vec!["a.md".to_string()]);
+        app.start_delete();
+
+        match &app.overlay {
+            Overlay::FileOp(FileOp::Delete { name, .. }) => {
+                assert_eq!(name, "a.md");
+            }
+            _ => panic!("Expected Delete overlay"),
+        }
+    }
+
+    #[test]
+    fn start_rename_prefills_current_name() {
+        let dir = TempTestDir::new("mdt-test-fop-rename");
+        dir.create_file("a.md", "# A");
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+
+        app.tree.tree_state.select(vec!["a.md".to_string()]);
+        app.start_rename();
+
+        assert!(matches!(app.overlay, Overlay::FileOp(FileOp::Rename { .. })));
+        assert_eq!(app.file_op_input, "a.md");
+    }
+
+    #[test]
+    fn start_move_with_selection() {
+        let dir = TempTestDir::new("mdt-test-fop-move");
+        dir.create_file("a.md", "# A");
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+
+        app.tree.tree_state.select(vec!["a.md".to_string()]);
+        app.start_move();
+
+        assert!(matches!(app.overlay, Overlay::FileOp(FileOp::Move { .. })));
+        assert!(app.file_op_input.is_empty());
+    }
+
+    #[test]
+    fn handle_file_op_key_esc_cancels() {
+        let dir = TempTestDir::new("mdt-test-fop-esc");
+        dir.create_file("a.md", "# A");
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+
+        app.overlay = Overlay::FileOp(FileOp::CreateFile { parent_dir: dir.path().to_path_buf() });
+        app.handle_file_op_key(key(KeyCode::Esc));
+
+        assert!(matches!(app.overlay, Overlay::None));
+    }
+
+    #[test]
+    fn handle_file_op_key_char_adds_to_input() {
+        let dir = TempTestDir::new("mdt-test-fop-char");
+        dir.create_file("a.md", "# A");
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+
+        app.overlay = Overlay::FileOp(FileOp::CreateFile { parent_dir: dir.path().to_path_buf() });
+        app.handle_file_op_key(key(KeyCode::Char('t')));
+        app.handle_file_op_key(key(KeyCode::Char('e')));
+
+        assert_eq!(app.file_op_input, "te");
+    }
+
+    #[test]
+    fn handle_file_op_key_backspace_removes_char() {
+        let dir = TempTestDir::new("mdt-test-fop-bksp");
+        dir.create_file("a.md", "# A");
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+
+        app.overlay = Overlay::FileOp(FileOp::CreateFile { parent_dir: dir.path().to_path_buf() });
+        app.file_op_input = "abc".to_string();
+        app.handle_file_op_key(key(KeyCode::Backspace));
+
+        assert_eq!(app.file_op_input, "ab");
+    }
+
+    #[test]
+    fn confirm_create_file_creates_and_updates_tree() {
+        let dir = TempTestDir::new("mdt-test-fop-confirm-create");
+        dir.create_file("a.md", "# A");
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+
+        app.overlay = Overlay::FileOp(FileOp::CreateFile { parent_dir: dir.path().to_path_buf() });
+        app.file_op_input = "new.md".to_string();
+        app.confirm_file_op();
+
+        assert!(matches!(app.overlay, Overlay::None));
+        assert!(app.status_message.contains("Created"));
+        assert!(dir.path().join("new.md").exists());
+    }
+
+    #[test]
+    fn confirm_create_dir_creates_directory() {
+        let dir = TempTestDir::new("mdt-test-fop-confirm-mkdir");
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+
+        app.overlay = Overlay::FileOp(FileOp::CreateDir { parent_dir: dir.path().to_path_buf() });
+        app.file_op_input = "newdir".to_string();
+        app.confirm_file_op();
+
+        assert!(dir.path().join("newdir").is_dir());
+        assert!(app.status_message.contains("Created"));
+    }
+
+    #[test]
+    fn confirm_empty_input_does_nothing() {
+        let dir = TempTestDir::new("mdt-test-fop-empty");
+        dir.create_file("a.md", "# A");
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+
+        app.overlay = Overlay::FileOp(FileOp::CreateFile { parent_dir: dir.path().to_path_buf() });
+        app.file_op_input.clear();
+        app.confirm_file_op();
+
+        // Should return silently without creating anything
+        assert!(app.status_message.is_empty());
+    }
+
+    #[test]
+    fn confirm_delete_removes_file() {
+        let dir = TempTestDir::new("mdt-test-fop-confirm-delete");
+        dir.create_file("a.md", "# A");
+        let target = dir.path().join("a.md");
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+
+        app.overlay = Overlay::FileOp(FileOp::Delete {
+            target: target.clone(),
+            is_dir: false,
+            name: "a.md".to_string(),
+        });
+        app.confirm_file_op();
+
+        assert!(!target.exists());
+        assert!(app.status_message.contains("Deleted"));
+    }
+
+    #[test]
+    fn confirm_delete_current_file_clears_document() {
+        let dir = TempTestDir::new("mdt-test-fop-delete-current");
+        dir.create_file("a.md", "# A");
+        let target = dir.path().join("a.md");
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        app.open_file(&target);
+        assert!(app.document.current_file.is_some());
+
+        app.overlay = Overlay::FileOp(FileOp::Delete {
+            target: target.clone(),
+            is_dir: false,
+            name: "a.md".to_string(),
+        });
+        app.confirm_file_op();
+
+        assert!(app.document.current_file.is_none());
+    }
+
+    #[test]
+    fn confirm_rename_renames_file() {
+        let dir = TempTestDir::new("mdt-test-fop-confirm-rename");
+        dir.create_file("old.md", "# Old");
+        let target = dir.path().join("old.md");
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+
+        app.overlay = Overlay::FileOp(FileOp::Rename { target, is_dir: false });
+        app.file_op_input = "new.md".to_string();
+        app.confirm_file_op();
+
+        assert!(!dir.path().join("old.md").exists());
+        assert!(dir.path().join("new.md").exists());
+        assert!(app.status_message.contains("Renamed"));
+    }
+
+    #[test]
+    fn delete_overlay_only_enter_or_esc() {
+        let dir = TempTestDir::new("mdt-test-fop-delete-keys");
+        dir.create_file("a.md", "# A");
+        let target = dir.path().join("a.md");
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+
+        app.overlay =
+            Overlay::FileOp(FileOp::Delete { target, is_dir: false, name: "a.md".to_string() });
+
+        // Typing chars should do nothing in delete confirmation
+        app.handle_file_op_key(key(KeyCode::Char('y')));
+        assert!(app.file_op_input.is_empty());
+    }
+}

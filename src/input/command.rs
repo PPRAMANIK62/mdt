@@ -155,4 +155,161 @@ mod tests {
 
         assert_eq!(app.status_message, "Not in editor");
     }
+
+    #[test]
+    fn char_key_adds_to_command_buffer() {
+        let dir = TempTestDir::new("mdt-test-cmd-char");
+        dir.create_file("test.md", "# Test");
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        app.mode = AppMode::Command;
+
+        app.handle_command_key(KeyEvent::new(KeyCode::Char('h'), KeyModifiers::NONE));
+        app.handle_command_key(KeyEvent::new(KeyCode::Char('i'), KeyModifiers::NONE));
+
+        assert_eq!(app.command_buffer, "hi");
+        assert_eq!(app.mode, AppMode::Command);
+    }
+
+    #[test]
+    fn backspace_pops_char() {
+        let dir = TempTestDir::new("mdt-test-cmd-bksp");
+        dir.create_file("test.md", "# Test");
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        app.mode = AppMode::Command;
+        app.command_buffer = "abc".to_string();
+
+        app.handle_command_key(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE));
+
+        assert_eq!(app.command_buffer, "ab");
+        assert_eq!(app.mode, AppMode::Command);
+    }
+
+    #[test]
+    fn backspace_on_empty_returns_to_normal() {
+        let dir = TempTestDir::new("mdt-test-cmd-bksp-empty");
+        dir.create_file("test.md", "# Test");
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        app.mode = AppMode::Command;
+        app.command_buffer = "a".to_string();
+
+        // Pop the last char
+        app.handle_command_key(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE));
+
+        assert!(app.command_buffer.is_empty());
+        assert_eq!(app.mode, AppMode::Normal);
+    }
+
+    #[test]
+    fn enter_executes_command_and_returns_to_normal() {
+        let dir = TempTestDir::new("mdt-test-cmd-enter");
+        dir.create_file("test.md", "# Test");
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        app.mode = AppMode::Command;
+        app.command_buffer = "q".to_string();
+
+        app.handle_command_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+        assert_eq!(app.mode, AppMode::Normal);
+        assert!(app.command_buffer.is_empty());
+        assert!(app.should_quit);
+    }
+
+    #[test]
+    fn unknown_command_shows_error() {
+        let dir = TempTestDir::new("mdt-test-cmd-unknown");
+        dir.create_file("test.md", "# Test");
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        app.execute_command("foobar");
+
+        assert!(app.status_message.contains("Unknown command"));
+        assert!(app.status_message.contains("foobar"));
+    }
+
+    #[test]
+    fn quit_alias_works() {
+        let dir = TempTestDir::new("mdt-test-cmd-quit-alias");
+        dir.create_file("test.md", "# Test");
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        app.execute_command("quit");
+
+        assert!(app.should_quit);
+    }
+
+    #[test]
+    fn q_bang_force_quits_editor() {
+        let dir = TempTestDir::new("mdt-test-cmd-q-bang");
+        dir.create_file("test.md", "# Test");
+        let file = dir.path().join("test.md");
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        app.open_file(&file);
+        app.enter_editor();
+        app.editor.is_dirty = true;
+
+        app.execute_command("q!");
+
+        // Should exit editor despite dirty flag
+        assert!(app.editor.textarea.is_none());
+    }
+
+    #[test]
+    fn q_with_dirty_editor_shows_warning() {
+        let dir = TempTestDir::new("mdt-test-cmd-q-dirty");
+        dir.create_file("test.md", "# Test");
+        let file = dir.path().join("test.md");
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        app.open_file(&file);
+        app.enter_editor();
+        app.editor.is_dirty = true;
+
+        app.execute_command("q");
+
+        assert!(app.status_message.contains("Unsaved changes"));
+        assert!(app.editor.textarea.is_some()); // still in editor
+    }
+
+    #[test]
+    fn w_not_in_editor_shows_error() {
+        let dir = TempTestDir::new("mdt-test-cmd-w-no-editor");
+        dir.create_file("test.md", "# Test");
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        app.execute_command("w");
+
+        assert_eq!(app.status_message, "Not in editor");
+    }
+
+    #[test]
+    fn wq_not_in_editor_shows_error() {
+        let dir = TempTestDir::new("mdt-test-cmd-wq-no-editor");
+        dir.create_file("test.md", "# Test");
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        app.execute_command("wq");
+
+        assert_eq!(app.status_message, "Not in editor");
+    }
+
+    #[test]
+    fn edit_alias_works() {
+        let dir = TempTestDir::new("mdt-test-cmd-edit-alias");
+        dir.create_file("test.md", "# V1");
+        let file = dir.path().join("test.md");
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        app.open_file(&file);
+        app.enter_editor();
+
+        std::fs::write(&file, "# V2").unwrap();
+        app.execute_command("edit");
+
+        assert_eq!(app.document.file_content, "# V2");
+    }
 }
