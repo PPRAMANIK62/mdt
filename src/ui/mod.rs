@@ -53,8 +53,7 @@ fn draw_editor_area(frame: &mut Frame, app: &mut App, content_area: Rect) {
                 }
             };
             // Record editor inner height (area minus block borders) for scroll sync.
-            app.live_preview.editor_inner_height =
-                chunks[0].height.saturating_sub(2) as usize;
+            app.live_preview.editor_inner_height = chunks[0].height.saturating_sub(2) as usize;
             // Scoped borrow: draw editor first, borrow drops before draw_live_preview.
             {
                 let textarea = app.editor.textarea.as_ref().unwrap();

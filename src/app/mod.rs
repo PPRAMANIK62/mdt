@@ -171,8 +171,7 @@ impl App {
             return;
         };
         let content = textarea.lines().join("\n");
-        let (blocks, _links, source_lines) =
-            render_markdown_blocks_with_source_map(&content);
+        let (blocks, _links, source_lines) = render_markdown_blocks_with_source_map(&content);
         let width = if self.live_preview.viewport_width > 0 {
             Some(self.live_preview.viewport_width)
         } else if self.document.viewport_width > 0 {

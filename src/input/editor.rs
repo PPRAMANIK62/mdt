@@ -72,8 +72,7 @@ impl App {
             // Exit editor (with dirty-check warning).
             KeyCode::Esc => {
                 if self.editor.is_dirty {
-                    self.status_message =
-                        "Unsaved changes! :w to save, :q! to discard".to_string();
+                    self.status_message = "Unsaved changes! :w to save, :q! to discard".to_string();
                 } else {
                     self.exit_editor();
                 }

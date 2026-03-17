@@ -55,10 +55,7 @@ pub fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect) {
             )
         }
     } else if !file_info.is_empty() {
-        format!(
-            "{}{}{}{}",
-            file_info, dirty_indicator, preview_sep, preview_indicator
-        )
+        format!("{}{}{}{}", file_info, dirty_indicator, preview_sep, preview_indicator)
     } else {
         String::new()
     };

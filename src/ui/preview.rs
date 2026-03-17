@@ -130,10 +130,8 @@ pub fn draw_preview(frame: &mut Frame, app: &mut App, area: Rect) {
 /// (editor buffer content) instead of `app.document.rendered_lines` (on-disk content).
 /// Scroll position tracks the editor cursor.
 pub fn draw_live_preview(frame: &mut Frame, app: &mut App, area: Rect) {
-    let block = Block::default()
-        .title(" Preview ")
-        .borders(Borders::ALL)
-        .padding(Padding::new(1, 1, 0, 0));
+    let block =
+        Block::default().title(" Preview ").borders(Borders::ALL).padding(Padding::new(1, 1, 0, 0));
 
     let inner = block.inner(area);
 
@@ -181,27 +179,19 @@ pub fn draw_live_preview(frame: &mut Frame, app: &mut App, area: Rect) {
         if new_est != est {
             // Editor viewport moved — update preview proportionally.
             let max_editor_scroll = total_editor_lines.saturating_sub(editor_h);
-            let max_preview_scroll = app
-                .live_preview
-                .rendered_lines
-                .len()
-                .saturating_sub(viewport_height);
+            let max_preview_scroll =
+                app.live_preview.rendered_lines.len().saturating_sub(viewport_height);
 
             if max_editor_scroll == 0 {
                 app.live_preview.scroll_offset = 0;
             } else {
-                app.live_preview.scroll_offset =
-                    (new_est * max_preview_scroll) / max_editor_scroll;
+                app.live_preview.scroll_offset = (new_est * max_preview_scroll) / max_editor_scroll;
             }
         }
         app.live_preview.estimated_scroll_top = new_est;
     }
 
-    let max_scroll = app
-        .live_preview
-        .rendered_lines
-        .len()
-        .saturating_sub(viewport_height);
+    let max_scroll = app.live_preview.rendered_lines.len().saturating_sub(viewport_height);
     if app.live_preview.scroll_offset > max_scroll {
         app.live_preview.scroll_offset = max_scroll;
     }
@@ -213,16 +203,9 @@ pub fn draw_live_preview(frame: &mut Frame, app: &mut App, area: Rect) {
     let lines: Vec<Line<'_>> = visible_slice
         .iter()
         .map(|line| {
-            let spans: Vec<Span<'_>> = line
-                .spans
-                .iter()
-                .map(|s| Span::styled(s.content.as_ref(), s.style))
-                .collect();
-            Line {
-                spans,
-                style: line.style,
-                alignment: line.alignment,
-            }
+            let spans: Vec<Span<'_>> =
+                line.spans.iter().map(|s| Span::styled(s.content.as_ref(), s.style)).collect();
+            Line { spans, style: line.style, alignment: line.alignment }
         })
         .collect();
     let text = Text::from(lines);
