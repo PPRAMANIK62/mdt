@@ -257,3 +257,46 @@ fn open_file_succeeds_for_small_file() {
     assert!(app.status_message.is_empty());
     assert_eq!(app.document.current_file, Some(md_path));
 }
+
+// ── Live preview ──────────────────────────────────────────────────
+
+#[test]
+fn toggle_live_preview_flips_enabled() {
+    let dir = TempTestDir::new("mdt-test-lp-toggle");
+    dir.create_file("test.md", "# Test");
+    let mut app = App::new(dir.path(), Color::Reset).unwrap();
+
+    assert!(!app.live_preview.enabled);
+    app.toggle_live_preview();
+    assert!(app.live_preview.enabled);
+    app.toggle_live_preview();
+    assert!(!app.live_preview.enabled);
+}
+
+#[test]
+fn toggle_split_orientation_swaps() {
+    let dir = TempTestDir::new("mdt-test-lp-orientation");
+    dir.create_file("test.md", "# Test");
+    let mut app = App::new(dir.path(), Color::Reset).unwrap();
+
+    assert_eq!(app.live_preview.orientation, SplitOrientation::Horizontal);
+    app.toggle_split_orientation();
+    assert_eq!(app.live_preview.orientation, SplitOrientation::Vertical);
+    app.toggle_split_orientation();
+    assert_eq!(app.live_preview.orientation, SplitOrientation::Horizontal);
+}
+
+#[test]
+fn update_live_preview_renders_editor_content() {
+    let dir = TempTestDir::new("mdt-test-lp-update");
+    dir.create_file("test.md", "# Hello");
+    let file = dir.path().join("test.md");
+    let mut app = App::new(dir.path(), Color::Reset).unwrap();
+    app.open_file(&file);
+    app.enter_editor();
+    app.live_preview.enabled = true;
+
+    app.update_live_preview();
+
+    assert!(!app.live_preview.rendered_lines.is_empty());
+}
