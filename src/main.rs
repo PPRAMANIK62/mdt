@@ -163,6 +163,14 @@ fn run_loop(
             needs_redraw = true;
         }
 
+        // Check live preview debounce timer.
+        if let Some(debounce_time) = app.live_preview.debounce {
+            if debounce_time.elapsed() >= Duration::from_millis(150) {
+                app.update_live_preview();
+                needs_redraw = true;
+            }
+        }
+
         // Force redraw when cursor-bearing overlays are active (for blink animation).
         let had_cursor = app.cursor.visible;
         app.tick_cursor();
