@@ -27,6 +27,23 @@ impl App {
 
     /// Handle Normal-mode keys while in editor view (textarea is Some).
     pub(crate) fn handle_editor_normal_key(&mut self, key: KeyEvent) {
+        // Check for composed commands (Space+p, Space+s).
+        if let Some((pending_char, instant)) = self.pending_key.take() {
+            if instant.elapsed().as_millis() < 500 {
+                match (pending_char, key.code) {
+                    (' ', KeyCode::Char('p')) => {
+                        self.toggle_live_preview();
+                        return;
+                    }
+                    (' ', KeyCode::Char('s')) => {
+                        self.toggle_split_orientation();
+                        return;
+                    }
+                    _ => {} // fall through
+                }
+            }
+        }
+
         match key.code {
             // Enter Insert mode in editor.
             KeyCode::Char('i') => {
@@ -45,6 +62,10 @@ impl App {
                 } else {
                     self.exit_editor();
                 }
+            }
+            // Leader key for composed commands.
+            KeyCode::Char(' ') => {
+                self.pending_key = Some((' ', std::time::Instant::now()));
             }
             // Forward navigation keys to TextArea (h/j/k/l, arrows, etc.).
             _ => {
@@ -280,6 +301,41 @@ mod tests {
 
         assert!(!app.editor.is_dirty);
         assert!(!app.editor.external_change_detected);
+    }
+
+    #[test]
+    fn space_p_toggles_live_preview_in_editor_normal() {
+        let dir = TempTestDir::new("mdt-test-editor-space-p");
+        dir.create_file("test.md", "# Test");
+        let file = dir.path().join("test.md");
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        app.open_file(&file);
+        app.enter_editor();
+        app.mode = AppMode::Normal;
+        assert!(!app.live_preview.enabled);
+
+        app.handle_editor_normal_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE));
+        app.handle_editor_normal_key(KeyEvent::new(KeyCode::Char('p'), KeyModifiers::NONE));
+        assert!(app.live_preview.enabled);
+    }
+
+    #[test]
+    fn space_s_toggles_orientation_in_editor_normal() {
+        use crate::app::SplitOrientation;
+        let dir = TempTestDir::new("mdt-test-editor-space-s");
+        dir.create_file("test.md", "# Test");
+        let file = dir.path().join("test.md");
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        app.open_file(&file);
+        app.enter_editor();
+        app.mode = AppMode::Normal;
+        assert_eq!(app.live_preview.orientation, SplitOrientation::Horizontal);
+
+        app.handle_editor_normal_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE));
+        app.handle_editor_normal_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE));
+        assert_eq!(app.live_preview.orientation, SplitOrientation::Vertical);
     }
 
     #[test]

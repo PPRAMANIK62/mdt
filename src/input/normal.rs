@@ -31,6 +31,14 @@ impl App {
                         self.toggle_file_tree();
                         return;
                     }
+                    (' ', KeyCode::Char('p')) => {
+                        self.toggle_live_preview();
+                        return;
+                    }
+                    (' ', KeyCode::Char('s')) => {
+                        self.toggle_split_orientation();
+                        return;
+                    }
                     ('f', KeyCode::Char('f')) => {
                         self.open_file_finder();
                         return;
@@ -529,6 +537,33 @@ mod tests {
 
         assert!(!app.search.active);
         assert!(app.search.query.is_empty());
+    }
+
+    #[test]
+    fn space_p_toggles_live_preview() {
+        let dir = TempTestDir::new("mdt-test-normal-space-p");
+        dir.create_file("test.md", "# Test");
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        assert!(!app.live_preview.enabled);
+
+        app.handle_normal_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE));
+        app.handle_normal_key(KeyEvent::new(KeyCode::Char('p'), KeyModifiers::NONE));
+        assert!(app.live_preview.enabled);
+    }
+
+    #[test]
+    fn space_s_toggles_split_orientation() {
+        use crate::app::SplitOrientation;
+        let dir = TempTestDir::new("mdt-test-normal-space-s");
+        dir.create_file("test.md", "# Test");
+
+        let mut app = App::new(dir.path(), Color::Reset).unwrap();
+        assert_eq!(app.live_preview.orientation, SplitOrientation::Horizontal);
+
+        app.handle_normal_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE));
+        app.handle_normal_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE));
+        assert_eq!(app.live_preview.orientation, SplitOrientation::Vertical);
     }
 
     #[test]
