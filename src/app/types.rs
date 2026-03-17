@@ -52,18 +52,13 @@ pub(crate) enum Overlay {
 }
 
 /// Split orientation for live preview alongside editor.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum SplitOrientation {
     /// Editor left, preview right.
+    #[default]
     Horizontal,
     /// Editor top, preview bottom.
     Vertical,
-}
-
-impl Default for SplitOrientation {
-    fn default() -> Self {
-        Self::Horizontal
-    }
 }
 
 #[cfg(test)]
