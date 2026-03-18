@@ -2,7 +2,7 @@
 
 A fast, terminal-based markdown viewer and editor built with Rust.
 
-Point `mdt` at a directory and you get a file tree, a fully rendered markdown preview, and a built-in editor with vim-style keybindings. It renders headings, code blocks with syntax highlighting, tables, task lists, blockquotes, and more, all inside your terminal.
+Point `mdt` at a directory and you get a file tree, a fully rendered markdown preview, a built-in editor with vim-style keybindings, and a live split-pane preview that updates as you type. It renders headings, code blocks with syntax highlighting, tables, task lists, blockquotes, and more, all inside your terminal.
 
 ![Demo](public/demo.gif)
 
@@ -15,6 +15,8 @@ Point `mdt` at a directory and you get a file tree, a fully rendered markdown pr
 - Toggle the file tree on or off with a leader key
 - File management: create, delete, rename, and move files and directories
 - Nested path creation (e.g. `abc/def/notes.md`)
+- Fuzzy file finder to quickly jump to any file
+- File watching with automatic reload when files change on disk
 
 **Markdown preview**
 
@@ -40,6 +42,16 @@ Point `mdt` at a directory and you get a file tree, a fully rendered markdown pr
 - Insert and Normal modes
 - Dirty-file tracking with unsaved-changes warnings
 - Save, save-and-quit, and force-quit commands
+- Reload file from disk with `:e` / `:edit` command
+
+**Live preview**
+
+- Real-time split-pane preview that updates as you type
+- Horizontal (editor left, preview right) and vertical (editor top, preview bottom) split modes
+- Debounced rendering to keep editing responsive
+- Parallel scrolling between editor and preview panes
+- Toggle with `Space+p` or the `:preview` command
+- Swap split orientation with `Space+s`
 
 **Search**
 
@@ -87,7 +99,7 @@ Opens the given directory (or file). Defaults to the current directory if no pat
 
 | Flag | Description |
 |------|-------------|
-| `--max-file-size <bytes>` | Maximum file size to open (default: 10 MB) |
+| `--max-file-size <bytes>` | Maximum file size to open (default: 5 MB) |
 
 When `mdt` starts, you'll see the welcome screen. Press `Space+e` to open the file tree, navigate to a markdown file, and press `Enter` to preview it.
 
@@ -97,7 +109,7 @@ When `mdt` starts, you'll see the welcome screen. Press `Space+e` to open the fi
 
 | Key | Action |
 |-----|--------|
-| `j` / `k` | Scroll down / up (preview), navigate items (file tree) |
+| `j` / `k` / `Down` / `Up` | Scroll down / up (preview), navigate items (file tree) |
 | `gg` | Jump to top |
 | `G` | Jump to bottom |
 | `Ctrl+d` | Half page down |
@@ -117,6 +129,8 @@ When `mdt` starts, you'll see the welcome screen. Press `Space+e` to open the fi
 | `d` | Delete file or directory |
 | `r` | Rename file or directory |
 | `m` | Move file or directory |
+| `Backspace` | Collapse directory |
+| `ff` | Fuzzy file finder |
 
 ### Preview
 
@@ -135,6 +149,15 @@ When `mdt` starts, you'll see the welcome screen. Press `Space+e` to open the fi
 | `:wq` / `:x` | Save and exit editor |
 | `:q` | Quit editor (warns on unsaved changes) |
 | `:q!` | Force quit editor (discards changes) |
+| `:e` / `:edit` | Reload file from disk |
+
+### Live Preview
+
+| Key | Action |
+|-----|--------|
+| `Space+p` | Toggle live preview split |
+| `Space+s` | Swap split orientation (horizontal / vertical) |
+| `:preview` | Toggle live preview (command mode) |
 
 ### Search
 
@@ -164,6 +187,10 @@ When `mdt` starts, you'll see the welcome screen. Press `Space+e` to open the fi
 - [tui-tree-widget](https://github.com/EdJoPaTo/tui-rs-tree-widget) -- tree view widget for ratatui
 - [ratatui-textarea](https://github.com/rhysd/tui-textarea) -- text editor widget with vim keybindings
 - [terminal-colorsaurus](https://github.com/bash/terminal-colorsaurus) -- terminal background color detection
+- [clap](https://github.com/clap-rs/clap) -- command-line argument parsing
+- [fs2](https://github.com/danburkert/fs2-rs) -- advisory file locking
+- [fuzzy-matcher](https://github.com/lotabout/fuzzy-matcher) -- fuzzy string matching for file finder
+- [notify](https://github.com/notify-rs/notify) -- cross-platform file system notifications
 
 ## License
 
