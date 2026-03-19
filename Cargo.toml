@@ -9,6 +9,7 @@ homepage = "https://mdtui.pages.dev/"
 readme = "README.md"
 keywords = ["markdown", "terminal", "tui", "editor", "cli"]
 categories = ["command-line-utilities", "text-editors"]
+exclude = ["website/", "public/", "docs/", ".github/", ".husky/"]
 
 [[bin]]
 name = "mdt"
