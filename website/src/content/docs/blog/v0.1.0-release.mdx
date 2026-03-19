@@ -1,0 +1,45 @@
+---
+title: 'mdt v0.1.0'
+date: 2026-03-19
+authors:
+  - ppramanik
+tags:
+  - release
+excerpt: 'The first release of mdt: file browser, markdown preview with syntax highlighting, vim editor, live preview, fuzzy finder, file watching, and more.'
+---
+
+We're happy to announce **mdt v0.1.0**, the first public release. This version includes all the core features that make mdt a complete terminal markdown workflow.
+
+## Highlights
+
+### File Browser
+
+A collapsible directory tree with real-time search filtering, fuzzy file finder (`ff`), and full file management — create, delete, rename, and move files and directories without leaving the terminal.
+
+### Markdown Preview
+
+Full CommonMark rendering with syntax-highlighted code blocks (powered by syntect), tables with box-drawing borders, task lists, nested blockquotes, and heading jump navigation.
+
+### Built-in Editor
+
+Vim-style keybindings with insert and normal modes, dirty-file tracking, and familiar commands (`:w`, `:wq`, `:q!`, `:e`).
+
+### Live Preview
+
+A real-time split-pane preview that updates as you type. Choose between horizontal or vertical layouts with `Space+p` and `Space+s`. Debounced rendering keeps editing responsive, and parallel scrolling keeps both panes in sync.
+
+### File Watching
+
+Files reload automatically when changed on disk by another process.
+
+### Terminal Integration
+
+Mouse support, width-aware text wrapping, terminal background color detection, `NO_COLOR` support, and advisory file locking.
+
+## Install
+
+```bash
+cargo install mdtui
+```
+
+See the full [documentation](/mdt/getting-started/) for details on all features and keybindings.

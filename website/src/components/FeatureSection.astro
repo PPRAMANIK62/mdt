@@ -1,0 +1,39 @@
+---
+import { Picture } from 'astro:assets';
+import type { ImageMetadata } from 'astro';
+
+interface Props {
+  id: string;
+  label: string;
+  title: string;
+  description: string;
+  images: ImageMetadata[];
+  reverse?: boolean;
+}
+
+const { id, label, title, description, images, reverse = false } = Astro.props;
+---
+
+<section class="feature-section" id={id}>
+  <div class:list={['feature-inner', { reverse }]}>
+    <div class="feature-text">
+      <span class="feature-label">{label}</span>
+      <h2>{title}</h2>
+      <p>{description}</p>
+    </div>
+    <div class="feature-images">
+      {
+        images.map((image) => (
+          <Picture
+            src={image}
+            formats={['avif', 'webp']}
+            width={1200}
+            alt={`${title} screenshot`}
+            loading="lazy"
+            decoding="async"
+          />
+        ))
+      }
+    </div>
+  </div>
+</section>

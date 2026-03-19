@@ -1,0 +1,9 @@
+/* Geist font imports */
+@import '@fontsource-variable/geist';
+@import '@fontsource-variable/geist-mono';
+
+/* Global Starlight overrides for mdt docs */
+:root {
+  --sl-font: 'Geist Variable', sans-serif;
+  --sl-font-mono: 'Geist Mono Variable', monospace;
+}

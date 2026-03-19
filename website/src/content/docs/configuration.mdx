@@ -1,0 +1,68 @@
+---
+title: Configuration
+description: CLI flags, environment variables, and terminal integration settings.
+---
+
+mdt is configured through command-line flags and environment variables. There is no configuration file.
+
+## Usage
+
+```bash
+mdt [path] [--max-file-size <bytes>]
+```
+
+If no path is given, mdt opens the current directory. You can pass a directory to browse or a specific file to open directly.
+
+## CLI flags
+
+| Flag                      | Description                                   | Default          |
+| ------------------------- | --------------------------------------------- | ---------------- |
+| `--max-file-size <bytes>` | Maximum file size in bytes that mdt will open | 5,242,880 (5 MB) |
+
+For example, to allow opening files up to 10 MB:
+
+```bash
+mdt --max-file-size 10485760
+```
+
+## Environment variables
+
+### `NO_COLOR`
+
+mdt respects the [NO_COLOR](https://no-color.org/) standard. Set this environment variable to any value to disable all color output:
+
+```bash
+NO_COLOR=1 mdt
+```
+
+This is useful for terminals that do not support colors or when piping output.
+
+## Terminal integration
+
+### Mouse support
+
+mdt supports mouse input out of the box:
+
+- **Scroll wheel** to scroll the preview or file tree
+- **Click** to switch focus between panes
+
+No configuration is needed; mouse support is enabled automatically.
+
+### Background color detection
+
+mdt detects your terminal's background color to prevent transparency bleed-through. This ensures that rendered elements like code blocks and tables look correct regardless of your terminal's color scheme.
+
+### Width-aware rendering
+
+mdt adapts its rendering to the terminal width:
+
+- Paragraphs, headings, blockquotes, and lists wrap to fit the available space
+- Code blocks and tables are truncated when the terminal is too narrow, rather than breaking the layout
+
+### Performance
+
+mdt is built for speed with several optimizations:
+
+- **Dirty-flag rendering** -- only redraws the screen when something actually changes
+- **Pre-warmed syntax highlighting** -- loads syntax definitions on a background thread at startup
+- **Panic-safe terminal teardown** -- restores the terminal state even if mdt crashes unexpectedly

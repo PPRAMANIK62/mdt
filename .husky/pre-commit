@@ -1,0 +1,2 @@
+cargo fmt --check && cargo clippy -- -D warnings
+cd website && bun run lint && bun run fmt:check

@@ -1,0 +1,40 @@
+---
+import InstallCommand from './InstallCommand.astro';
+---
+
+<footer class="landing-footer">
+  <div class="landing-footer-inner">
+    <h2>Ready to try it?</h2>
+
+    <InstallCommand />
+
+    <ul class="footer-links">
+      <li>
+        <a
+          href="https://github.com/PPRAMANIK62/mdt/blob/main/LICENSE"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          MIT License
+        </a>
+      </li>
+      <li>
+        <a href="https://www.rust-lang.org/" target="_blank" rel="noopener noreferrer">
+          Built with Rust
+        </a>
+      </li>
+      <li>
+        <a href="https://github.com/PPRAMANIK62/mdt" target="_blank" rel="noopener noreferrer">
+          View on GitHub
+        </a>
+      </li>
+      <li>
+        <a href={`${import.meta.env.BASE_URL}getting-started/`}>Documentation</a>
+      </li>
+    </ul>
+
+    <p class="footer-copyright">
+      &copy; {new Date().getFullYear()} mdt contributors. All rights reserved.
+    </p>
+  </div>
+</footer>

@@ -1,0 +1,54 @@
+---
+title: Getting Started
+description: A quick introduction to mdt, the fast terminal-based markdown viewer and editor.
+---
+
+import { Image } from 'astro:assets';
+import welcome from '../../assets/screenshots/welcome.png';
+import preview from '../../assets/screenshots/preview.png';
+
+**mdt** is a fast, terminal-based markdown viewer and editor built with Rust. It lets you browse, read, and edit markdown files directly in your terminal with rich rendering, syntax highlighting, and a built-in file browser.
+
+<Image
+  src={welcome}
+  alt="mdt welcome screen with ASCII art logo and keybinding hints"
+  width={800}
+/>
+
+## What can mdt do?
+
+- **Browse files** with a collapsible file tree, fuzzy finder, and file management operations
+- **Preview markdown** with full rendering of headings, code blocks, tables, lists, blockquotes, and more
+- **Edit files** with a built-in vim-style text editor
+- **Live preview** your edits in a real-time split pane
+- **Search** within documents and across the file tree
+
+<Image src={preview} alt="Markdown preview with code blocks, tables, and lists" width={800} />
+
+## Quick start
+
+Install mdt from crates.io:
+
+```bash
+cargo install mdtui
+```
+
+Then open a directory or file:
+
+```bash
+mdt              # opens current directory
+mdt ~/notes      # opens a specific directory
+mdt README.md    # opens a specific file
+```
+
+That's it. You'll see the file tree on the left and a markdown preview on the right. Use `j`/`k` to scroll, `Enter` to open files, and `q` to quit.
+
+## Next steps
+
+- [Installation](/installation/) -- other ways to install mdt
+- [File Browser](/file-browser/) -- navigating and managing files
+- [Editor](/editor/) -- editing markdown with vim-style keybindings
+- [Live Preview](/live-preview/) -- real-time split-pane preview
+- [Keybindings](/keybindings/) -- complete keybinding reference
+- [Search](/search/) -- searching within documents and the file tree
+- [Configuration](/configuration/) -- CLI flags and terminal settings

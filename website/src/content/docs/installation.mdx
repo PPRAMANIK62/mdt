@@ -1,0 +1,52 @@
+---
+title: Installation
+description: How to install mdt on your system.
+---
+
+## Prerequisites
+
+mdt is written in Rust. To install it, you need the Rust toolchain (Cargo and rustc). If you don't have it yet, install it from [rustup.rs](https://rustup.rs/):
+
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+## Install from crates.io
+
+The easiest way to install mdt is from [crates.io](https://crates.io/crates/mdtui):
+
+```bash
+cargo install mdtui
+```
+
+This downloads, compiles, and installs the `mdt` binary into your Cargo bin directory (typically `~/.cargo/bin/`).
+
+## Build from source
+
+Clone the repository and build in release mode:
+
+```bash
+git clone https://github.com/pimalaya/markdown-tui.git
+cd markdown-tui
+cargo build --release
+```
+
+The compiled binary will be at `target/release/mdt`. You can copy it to a directory on your `PATH`:
+
+```bash
+cp target/release/mdt ~/.local/bin/
+```
+
+## Verify installation
+
+Confirm mdt is installed and accessible:
+
+```bash
+mdt --help
+```
+
+You should see usage information and available flags. To get started, run `mdt` in any directory containing markdown files:
+
+```bash
+mdt
+```

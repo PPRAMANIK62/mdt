@@ -1,0 +1,59 @@
+---
+---
+
+<div class="install-command">
+  <code>cargo install mdtui</code>
+  <button class="copy-btn" aria-label="Copy install command" type="button">
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      class="copy-icon"
+    >
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+    </svg>
+    <span class="copy-text"></span>
+  </button>
+</div>
+
+<script>
+  document.addEventListener('astro:page-load', () => {
+    document.querySelectorAll('.install-command .copy-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const command = btn.closest('.install-command')?.querySelector('code')?.textContent;
+        if (!command) return;
+
+        try {
+          await navigator.clipboard.writeText(command);
+          const textEl = btn.querySelector('.copy-text') as HTMLElement;
+          const iconEl = btn.querySelector('.copy-icon') as HTMLElement;
+
+          btn.classList.add('copied');
+          if (iconEl) iconEl.style.display = 'none';
+          if (textEl) textEl.textContent = 'Copied!';
+
+          setTimeout(() => {
+            btn.classList.remove('copied');
+            if (iconEl) iconEl.style.display = '';
+            if (textEl) textEl.textContent = '';
+          }, 2000);
+        } catch {
+          // Fallback: select the code text
+          const code = btn.closest('.install-command')?.querySelector('code');
+          if (code) {
+            const range = document.createRange();
+            range.selectNodeContents(code);
+            const sel = window.getSelection();
+            sel?.removeAllRanges();
+            sel?.addRange(range);
+          }
+        }
+      });
+    });
+  });
+</script>

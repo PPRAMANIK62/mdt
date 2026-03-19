@@ -1,0 +1,66 @@
+---
+import '../styles/landing.css';
+---
+
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>mdt — Terminal Markdown Viewer & Editor</title>
+    <meta
+      name="description"
+      content="A fast, terminal-based markdown viewer and editor built with Rust. Vim keybindings, live preview, syntax highlighting, and a file browser."
+    />
+
+    <!-- Open Graph -->
+    <meta property="og:title" content="mdt — Terminal Markdown Viewer & Editor" />
+    <meta
+      property="og:description"
+      content="A fast, terminal-based markdown viewer and editor built with Rust."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://ppramanik62.github.io/mdt/" />
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="mdt — Terminal Markdown Viewer & Editor" />
+    <meta
+      name="twitter:description"
+      content="A fast, terminal-based markdown viewer and editor built with Rust."
+    />
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href={`${import.meta.env.BASE_URL}favicon.svg`} />
+
+    <!-- Prevent theme flash -->
+    <script is:inline>
+      (function () {
+        const stored = localStorage.getItem('starlight-theme');
+        const theme = stored || 'dark';
+        document.documentElement.setAttribute('data-theme', theme);
+      })();
+    </script>
+  </head>
+  <body>
+    <nav class="landing-nav">
+      <div class="landing-nav-inner">
+        <a class="landing-nav-logo" href={`${import.meta.env.BASE_URL}`}>
+          <img src={`${import.meta.env.BASE_URL}favicon.svg`} alt="mdt logo" width="32" height="32" />
+          <span>mdt</span>
+        </a>
+        <ul class="landing-nav-links">
+          <li><a href={`${import.meta.env.BASE_URL}getting-started/`}>Docs</a></li>
+          <li><a href={`${import.meta.env.BASE_URL}blog/`}>Blog</a></li>
+          <li>
+            <a href="https://github.com/PPRAMANIK62/mdt" target="_blank" rel="noopener noreferrer">
+              GitHub
+            </a>
+          </li>
+          <li id="theme-toggle-slot"></li>
+        </ul>
+      </div>
+    </nav>
+
+    <slot />
+  </body>
+</html>

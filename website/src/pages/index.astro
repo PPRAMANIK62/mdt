@@ -1,0 +1,64 @@
+---
+import LandingLayout from '../components/LandingLayout.astro';
+import Hero from '../components/Hero.astro';
+import FeatureSection from '../components/FeatureSection.astro';
+import Footer from '../components/Footer.astro';
+import ThemeToggle from '../components/ThemeToggle.astro';
+
+import { welcome, fuzzyFinder, preview, syntaxHighlight, livePreviewH, livePreviewV } from '../assets';
+---
+
+<LandingLayout>
+  <ThemeToggle />
+
+  <Hero />
+
+  <FeatureSection
+    id="browse"
+    label="BROWSE"
+    title="Navigate your files"
+    description="Explore your project with a built-in file tree browser and jump to any file instantly with the integrated fuzzy finder. Create, rename, and delete files without leaving the terminal."
+    images={[welcome, fuzzyFinder]}
+    reverse={false}
+  />
+
+  <FeatureSection
+    id="preview"
+    label="PREVIEW"
+    title="Beautiful markdown rendering"
+    description="Syntax highlighting for fenced code blocks, properly formatted tables, blockquotes, lists, and headings — all rendered beautifully right in your terminal with full color support."
+    images={[preview, syntaxHighlight]}
+    reverse={true}
+  />
+
+  <FeatureSection
+    id="edit"
+    label="EDIT"
+    title="Vim-powered editing"
+    description="Edit markdown with familiar vim keybindings. Switch between normal and insert modes, use motions and text objects, and save or quit with the commands you already know."
+    images={[livePreviewH]}
+    reverse={false}
+  />
+
+  <FeatureSection
+    id="live-preview"
+    label="LIVE PREVIEW"
+    title="See changes as you type"
+    description="Real-time split-pane preview that updates as you edit. Debounced rendering keeps everything smooth, and parallel scroll keeps your preview in sync with your cursor position."
+    images={[livePreviewH, livePreviewV]}
+    reverse={true}
+  />
+
+  <Footer />
+</LandingLayout>
+
+<script>
+  // Move the ThemeToggle button into the nav slot
+  document.addEventListener('astro:page-load', () => {
+    const toggle = document.querySelector('body > .theme-toggle');
+    const slot = document.getElementById('theme-toggle-slot');
+    if (toggle && slot) {
+      slot.appendChild(toggle);
+    }
+  });
+</script>

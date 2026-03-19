@@ -1,0 +1,16 @@
+{
+  "tab_size": 2,
+  "formatter": {
+    "external": {
+      "command": "bunx",
+      "arguments": ["oxfmt", "--stdin-filepath", "{buffer_path}"]
+    }
+  },
+  "format_on_save": "on",
+  "file_scan_exclusions": ["dist", ".astro", "node_modules"],
+  "languages": {
+    "Markdown": {
+      "format_on_save": "off"
+    }
+  }
+}

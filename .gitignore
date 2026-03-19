@@ -1,4 +1,10 @@
 /target
 .sisyphus
 demo
-docs
+/docs
+.superpowers
+
+# Website
+website/node_modules/
+website/dist/
+website/.astro/

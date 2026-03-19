@@ -1,0 +1,30 @@
+---
+title: Search
+description: Search within documents and across the file tree.
+---
+
+mdt provides two types of search: in-document search for finding text within a markdown file, and file tree search for filtering files by name.
+
+## In-document search
+
+Press `/` while the preview or editor pane is focused to start a search. Type your query and press `Enter` to confirm. mdt highlights all matches and displays the total match count.
+
+### Navigating matches
+
+| Key   | Action                     |
+| ----- | -------------------------- |
+| `n`   | Jump to the next match     |
+| `N`   | Jump to the previous match |
+| `Esc` | Cancel the search          |
+
+Match navigation wraps around: pressing `n` on the last match takes you back to the first, and pressing `N` on the first match takes you to the last.
+
+## File tree search
+
+Press `/` while the file tree is focused to filter the tree in real time. As you type, only files and directories matching your query remain visible. This is useful for narrowing down a large project to the files you care about.
+
+To clear the filter, press `Esc`.
+
+## Fuzzy file finder
+
+For jumping to a specific file quickly, use the fuzzy file finder with `ff`. Unlike the file tree search which filters the visible tree, the fuzzy finder searches across all files in the project and ranks results by match quality. See the [File Browser](/file-browser/#fuzzy-file-finder) page for details.

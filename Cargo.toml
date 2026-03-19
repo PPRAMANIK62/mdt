@@ -9,6 +9,10 @@ readme = "README.md"
 keywords = ["markdown", "terminal", "tui", "editor", "cli"]
 categories = ["command-line-utilities", "text-editors"]
 
+[[bin]]
+name = "mdt"
+path = "src/main.rs"
+
 [dependencies]
 ratatui = "0.30"
 crossterm = "0.29"

@@ -1,0 +1,43 @@
+---
+title: Introducing mdt
+date: 2026-03-19
+authors:
+  - ppramanik
+tags:
+  - release
+  - announcement
+excerpt: Meet mdt — a fast, terminal-based markdown viewer and editor built with Rust. Browse files, preview markdown, edit with vim keybindings, and see live previews, all in your terminal.
+---
+
+We're excited to introduce **mdt**, a fast, terminal-based markdown viewer and editor built with Rust.
+
+If you work with markdown files and live in the terminal, mdt gives you everything you need without ever opening a GUI application. Point it at a directory and you get a file tree, a fully rendered markdown preview, a built-in editor with vim-style keybindings, and a live split-pane preview that updates as you type.
+
+## Why mdt?
+
+There are plenty of ways to edit markdown, but most involve switching context — opening a browser-based preview, launching an Electron app, or piecing together terminal tools. mdt brings it all together in a single, fast binary:
+
+- **Browse** — Collapsible file tree with fuzzy finding and real-time search
+- **Preview** — Headings, tables, code blocks with syntax highlighting, task lists, blockquotes, all rendered beautifully in your terminal
+- **Edit** — Vim-style keybindings with insert/normal modes, `:w` to save, `:q` to quit
+- **Live Preview** — Split-pane view that updates as you type, with horizontal or vertical layouts
+
+## Built with Rust
+
+mdt is built on [ratatui](https://ratatui.rs) for the terminal UI, [pulldown-cmark](https://github.com/pulldown-cmark/pulldown-cmark) for CommonMark parsing, and [syntect](https://github.com/trishume/syntect) for syntax highlighting. The result is a snappy, memory-efficient tool that starts instantly and handles large files smoothly.
+
+## Get started
+
+Install from crates.io:
+
+```bash
+cargo install mdtui
+```
+
+Then open any directory:
+
+```bash
+mdt ~/notes
+```
+
+Check out the [Getting Started](/mdt/getting-started/) guide for a full walkthrough, or browse the [documentation](/mdt/getting-started/) to learn about all the features.
