@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.3.0] - 2026-03-19
 
 ### Bug Fixes
 
@@ -79,6 +79,7 @@ All notable changes to this project will be documented in this file.
 - Remove stale #[allow(dead_code)] from wrap_spans([18dbd47](https://github.com/PPRAMANIK62/mdt/commit/18dbd4723b9442dba3c1d9d5685f8be4bc3d60ac))
 - **file_tree**: Increase DIR_SCAN_MAX_DEPTH to 5([a7cf39b](https://github.com/PPRAMANIK62/mdt/commit/a7cf39b6c793dce3edc0263734574a693c467cc5))
 - **cargo**: Remove unnecessary lint suppressions([3c48485](https://github.com/PPRAMANIK62/mdt/commit/3c484856ae26fbe12c2dd673cc6d2fbcef76cfe4))
+- Add release infrastructure and bump to v0.3.0([e9aaa06](https://github.com/PPRAMANIK62/mdt/commit/e9aaa06c28d6e6c9b3e9aef748fc626a59e2d5e0))
 
 ### Performance
 
