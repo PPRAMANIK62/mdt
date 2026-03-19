@@ -2,6 +2,8 @@
 
 A fast, terminal-based markdown viewer and editor built with Rust.
 
+**[Documentation](https://mdtui.pages.dev/)**
+
 Point `mdt` at a directory and you get a file tree, a fully rendered markdown preview, a built-in editor with vim-style keybindings, and a live split-pane preview that updates as you type. It renders headings, code blocks with syntax highlighting, tables, task lists, blockquotes, and more, all inside your terminal.
 
 ![Demo](public/demo.gif)
