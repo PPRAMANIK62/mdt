@@ -3,7 +3,7 @@ import starlight from '@astrojs/starlight';
 import starlightBlog from 'starlight-blog';
 
 export default defineConfig({
-  site: 'https://mdtui.pages.dev',
+  site: 'https://mdt.purbayan.me',
   integrations: [
     starlight({
       title: 'mdt',
