@@ -12,6 +12,7 @@ mod watcher_handlers;
 #[cfg(test)]
 mod tests;
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -55,6 +56,7 @@ pub struct App {
     pub(crate) preview_area: Option<ratatui::layout::Rect>,
     pub(crate) file_list_area: Option<ratatui::layout::Rect>,
     pub(crate) live_preview: LivePreviewState,
+    pub(crate) stdin_mode: bool,
 }
 
 impl App {
@@ -116,7 +118,66 @@ impl App {
             preview_area: None,
             file_list_area: None,
             live_preview: LivePreviewState::default(),
+            stdin_mode: false,
         })
+    }
+
+    /// Create an `App` for piped stdin content (read-only, no file tree).
+    pub fn from_stdin(content: String, bg_color: ratatui::style::Color) -> Self {
+        let (init_width, init_height) = crossterm::terminal::size().unwrap_or((80, 24));
+
+        let (blocks, links) = render_markdown_blocks(&content);
+        let links = deduplicate_links(links);
+        let width = if init_width > 0 { Some(init_width as usize) } else { None };
+        let (rendered, block_line_starts) = rewrap_blocks(&blocks, width);
+
+        let mut document = DocumentState {
+            current_file: None,
+            file_content: content,
+            rendered_lines: rendered,
+            rendered_lines_lower: Vec::new(),
+            rendered_blocks: blocks,
+            links,
+            heading_line_offsets: Vec::new(),
+            block_line_starts,
+            scroll_offset: 0,
+            viewport_height: init_height as usize,
+            viewport_width: init_width as usize,
+        };
+        document.rebuild_lower_cache();
+        document.rebuild_heading_index();
+
+        Self {
+            tree: TreeViewState {
+                tree_state: TreeState::default(),
+                tree_items: Vec::new(),
+                path_map: HashMap::default(),
+                filtered_tree_items: None,
+                filtered_path_map: None,
+            },
+            document,
+            search: SearchState::default(),
+            editor: EditorState::default(),
+            link_picker: LinkPickerState::default(),
+            file_finder: FileFinderState::default(),
+            cursor: CursorState { visible: true, last_toggle: Instant::now() },
+            mode: AppMode::Normal,
+            focus: Focus::Preview,
+            should_quit: false,
+            status_message: String::new(),
+            pending_key: None,
+            command_buffer: String::new(),
+            overlay: Overlay::None,
+            file_op_input: String::new(),
+            show_file_tree: false,
+            bg_color,
+            root_path: PathBuf::new(),
+            max_file_size: Self::DEFAULT_MAX_FILE_SIZE,
+            preview_area: None,
+            file_list_area: None,
+            live_preview: LivePreviewState::default(),
+            stdin_mode: true,
+        }
     }
 
     /// Toggle the cursor blink state every ~530ms.
@@ -133,6 +194,9 @@ impl App {
 
     /// Get the display path for the current file (relative to root).
     pub(crate) fn display_file_path(&self) -> String {
+        if self.stdin_mode {
+            return "<stdin>".to_string();
+        }
         self.document
             .current_file
             .as_ref()

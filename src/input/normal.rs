@@ -227,6 +227,9 @@ impl App {
     }
 
     pub(crate) fn toggle_file_tree(&mut self) {
+        if self.stdin_mode {
+            return;
+        }
         self.show_file_tree = !self.show_file_tree;
         if self.show_file_tree {
             self.focus = Focus::FileList;

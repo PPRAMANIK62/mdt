@@ -41,6 +41,13 @@ mdt ~/notes      # opens a specific directory
 mdt README.md    # opens a specific file
 ```
 
+You can also pipe markdown content directly:
+
+```bash
+echo "# Hello World" | mdt
+cat README.md | mdt
+```
+
 That's it. You'll see the file tree on the left and a markdown preview on the right. Use `j`/`k` to scroll, `Enter` to open files, and `q` to quit.
 
 ## Next steps
