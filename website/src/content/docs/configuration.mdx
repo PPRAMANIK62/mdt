@@ -13,6 +13,24 @@ mdt [path] [--max-file-size <bytes>]
 
 If no path is given, mdt opens the current directory. You can pass a directory to browse or a specific file to open directly.
 
+## Reading from stdin
+
+mdt can read markdown from standard input via pipes:
+
+```bash
+echo "# Hello World" | mdt
+cat README.md | mdt
+curl -s https://example.com/doc.md | mdt
+```
+
+You can also use `-` as the path argument to read from stdin explicitly:
+
+```bash
+mdt -
+```
+
+In stdin mode, mdt operates in read-only preview mode. The file tree, file finder, and editor are disabled. The `--max-file-size` flag still applies to piped input.
+
 ## CLI flags
 
 | Flag                      | Description                                   | Default          |

@@ -61,7 +61,9 @@ pub fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect) {
     };
 
     // Right: line position when a file is open.
-    let right = if app.document.current_file.is_some() && !app.document.rendered_lines.is_empty() {
+    let right = if (app.document.current_file.is_some() || app.stdin_mode)
+        && !app.document.rendered_lines.is_empty()
+    {
         format!(
             "Ln {}/{} ",
             app.document.scroll_offset.saturating_add(1),

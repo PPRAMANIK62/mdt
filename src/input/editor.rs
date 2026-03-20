@@ -133,6 +133,10 @@ impl App {
 
     /// Enter the editor: create TextArea from current file content.
     pub(crate) fn enter_editor(&mut self) {
+        if self.stdin_mode {
+            self.status_message = "Read-only (stdin)".to_string();
+            return;
+        }
         if self.document.current_file.is_none() {
             self.status_message = "No file open".to_string();
             return;

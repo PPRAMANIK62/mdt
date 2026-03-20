@@ -356,3 +356,82 @@ fn space_p_in_insert_mode_does_not_toggle_preview() {
     app.handle_event(key_event(KeyCode::Char('p')));
     assert!(!app.live_preview.enabled);
 }
+
+// ── Stdin mode ──────────────────────────────────────────────────
+
+#[test]
+fn from_stdin_creates_app_in_stdin_mode() {
+    let app = App::from_stdin("# Hello\n\nWorld".to_string(), Color::Reset);
+    assert!(app.stdin_mode);
+    assert_eq!(app.focus, Focus::Preview);
+    assert!(!app.show_file_tree);
+    assert!(app.document.current_file.is_none());
+    assert!(!app.document.rendered_lines.is_empty());
+    assert!(!app.document.rendered_blocks.is_empty());
+}
+
+#[test]
+fn from_stdin_blocks_editor() {
+    let mut app = App::from_stdin("# Hello".to_string(), Color::Reset);
+    app.enter_editor();
+    assert!(app.editor.textarea.is_none());
+    assert_eq!(app.status_message, "Read-only (stdin)");
+}
+
+#[test]
+fn from_stdin_blocks_file_tree_toggle() {
+    let mut app = App::from_stdin("# Hello".to_string(), Color::Reset);
+    assert!(!app.show_file_tree);
+    app.toggle_file_tree();
+    assert!(!app.show_file_tree);
+}
+
+#[test]
+fn from_stdin_blocks_file_finder() {
+    let mut app = App::from_stdin("# Hello".to_string(), Color::Reset);
+    app.open_file_finder();
+    assert!(matches!(app.overlay, Overlay::None));
+    assert_eq!(app.status_message, "Not available (stdin)");
+}
+
+#[test]
+fn from_stdin_display_path_shows_stdin() {
+    let app = App::from_stdin("# Hello".to_string(), Color::Reset);
+    assert_eq!(app.display_file_path(), "<stdin>");
+}
+
+#[test]
+fn from_stdin_navigation_works() {
+    let content = (0..50).map(|i| format!("line {i}")).collect::<Vec<_>>().join("\n\n");
+    let mut app = App::from_stdin(content, Color::Reset);
+    app.document.viewport_height = 10;
+
+    // Scroll down
+    app.document.scroll_down();
+    assert_eq!(app.document.scroll_offset, 1);
+
+    // Scroll to top
+    app.document.scroll_to_top();
+    assert_eq!(app.document.scroll_offset, 0);
+
+    // Search mode entry
+    app.handle_event(key_event(KeyCode::Char('/')));
+    assert_eq!(app.mode, AppMode::Search);
+    assert!(app.search.active);
+}
+
+#[test]
+fn from_stdin_help_overlay_works() {
+    let mut app = App::from_stdin("# Hello".to_string(), Color::Reset);
+    app.handle_event(key_event(KeyCode::Char('?')));
+    assert!(matches!(app.overlay, Overlay::Help));
+    app.handle_event(key_event(KeyCode::Char('?')));
+    assert!(matches!(app.overlay, Overlay::None));
+}
+
+#[test]
+fn from_stdin_quit_works() {
+    let mut app = App::from_stdin("# Hello".to_string(), Color::Reset);
+    app.handle_event(key_event(KeyCode::Char('q')));
+    assert!(app.should_quit);
+}

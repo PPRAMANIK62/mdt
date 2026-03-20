@@ -12,6 +12,10 @@ use super::App;
 impl App {
     /// Open the file finder overlay, populating results with all files.
     pub(crate) fn open_file_finder(&mut self) {
+        if self.stdin_mode {
+            self.status_message = "Not available (stdin)".to_string();
+            return;
+        }
         self.file_finder.query.clear();
         self.file_finder.selected = 0;
         self.file_finder.results = self.collect_all_files();
